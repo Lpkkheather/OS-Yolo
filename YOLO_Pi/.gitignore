@@ -8,6 +8,7 @@ __pycache__/
 .DS_Store
 .claude/
 Ultralytics/
+OS-Yolo/
 logs/
 results/
 data/
@@ -22,9 +23,6 @@ PLAN.md
 
 # recorded clips can show real people: only the made-up test clips (names starting with _) are shared
 clips/[!_]*
-
-# models trained in ~/Documents/YOLO: bring them with "bash run.sh import" (the pretrained ones are shared)
-models/*_trained*
 
 # generated from the code
 *_code.pdf

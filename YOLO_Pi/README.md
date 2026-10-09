@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `bash run.sh import` | รับโมเดลที่เทรนเอง | บน Mac: ดึง `~/Documents/YOLO/models/*_trained.pt` + ชุด test ล่าสุด แล้วแปลงเป็น NCNN | `models/<ชื่อ>_trained_*_ncnn_model/` |
 | `bash run.sh send` | ย้ายไป Pi | บน Mac: ถามชื่อผู้ใช้ + IP ของ Pi แล้ว copy โฟลเดอร์ | `~/YOLO_Pi` บน Pi |
-| `bash run.sh github "แก้อะไร"` | ขึ้น GitHub | บน Mac: copy โฟลเดอร์นี้ขึ้น branch `YoLo_Detect` ของ `Lpkkheather/OS-Yolo` (ไม่แตะ `main`) — ไม่ส่งคลิปที่อัดเอง, ผลรัน (`results/`, `metrics/`), `.venv`, โมเดลที่เทรนเอง, `PLAN.md`, ตัวสคริปต์ `push_to_github.sh` เอง (ดู `.gitignore`) — ใช้ได้เฉพาะบนเครื่องผู้พัฒนา | `YOLO_Pi/` ใน repo |
+| `bash run.sh github "แก้อะไร"` | ขึ้น GitHub | บน Mac: copy โฟลเดอร์นี้ขึ้น branch `YoLo_Detect` ของ `Lpkkheather/OS-Yolo` (ไม่แตะ `main`) — ไม่ส่งคลิปที่อัดเอง, ผลรัน (`results/`, `metrics/`), `.venv`, `PLAN.md`, ตัวสคริปต์ `push_to_github.sh` เอง (ดู `.gitignore`) — ใช้ได้เฉพาะบนเครื่องผู้พัฒนา | `YOLO_Pi/` ใน repo |
 | `bash run.sh setup` | เตรียม Pi | ครั้งแรกบน Pi: `.venv` + ไลบรารี | `.venv/` |
 | `bash run.sh 0` | 0 แปลงโมเดล | `.pt` → NCNN ขนาด 640 และ 320 (ทำแล้ว) | `models/*_ncnn_model/` |
 | `bash run.sh 1` | 1 **Eval ภาพ** | ภาพ test 200 รูปที่มี Label: ความแม่น + NCNN เทียบ .pt | `metrics/<เครื่อง>/summary.md`, `results/<เครื่อง>/` |
