@@ -4,3 +4,5 @@ ncnn==1.0.20260526    # runs the NCNN models (fastest on the Raspberry Pi)
 lap==0.5.13           # needed by the ByteTrack tracker (3_camera.py)
 paho-mqtt==2.1.0      # sends the minute counts to the MQTT broker (bash run.sh count)
 # picamera2 (Pi camera) comes from Raspberry Pi OS: sudo apt install python3-picamera2
+# On the Pi "bash run.sh setup" installs the CPU-only PyTorch before this file: the default Linux PyTorch brings
+# several GB of NVIDIA GPU libraries (a Pi cannot use them, and they fill the SD card).

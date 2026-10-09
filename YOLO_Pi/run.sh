@@ -43,10 +43,17 @@ if [ "$STEP" = setup ]; then
   if command -v apt >/dev/null && [ "$(uname)" = Linux ]; then
     sudo apt install -y python3-picamera2        # Pi camera library (already on Raspberry Pi OS)
     python3 -m venv --system-site-packages .venv  # lets the venv use picamera2 from Raspberry Pi OS
+    # The Pi's storage is small: keep no download cache, and unpack here instead of /tmp (which can be a RAM disk).
+    export PIP_NO_CACHE_DIR=1 TMPDIR="$PWD/.pip-tmp"
+    mkdir -p "$TMPDIR"
+    # CPU-only PyTorch first. The default Linux PyTorch also downloads several GB of NVIDIA GPU libraries that a
+    # Pi cannot use and that fill the SD card ("No space left on device").
+    .venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
   else
     python3 -m venv .venv
   fi
   .venv/bin/pip install -r requirements.txt
+  rm -rf .pip-tmp
   echo "done: .venv is ready"
   exit 0
 fi

@@ -3,6 +3,7 @@
 
 # made on each machine
 .venv/
+.pip-tmp/
 __pycache__/
 *.cache
 .DS_Store
