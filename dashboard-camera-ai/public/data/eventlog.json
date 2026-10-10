@@ -1,0 +1,143 @@
+{
+  "generated_at": "2026-10-09T09:29:45+07:00",
+  "timezone": "Asia/Bangkok",
+  "levels": ["info", "ok", "warn", "error"],
+  "total": 15,
+  "events": [
+    {
+      "id": "evt_015",
+      "ts": "2026-10-09T09:29:41+07:00",
+      "level": "info",
+      "source": "room",
+      "type": "occupancy_changed",
+      "message": "คนเข้าห้อง → รวม 12 คน",
+      "meta": { "from": 11, "to": 12, "delta": 1, "capacity": 20 }
+    },
+    {
+      "id": "evt_014",
+      "ts": "2026-10-09T09:28:30+07:00",
+      "level": "ok",
+      "source": "pi",
+      "type": "cpu_temp_normal",
+      "message": "อุณหภูมิ CPU กลับสู่ปกติ (58.3 °C)",
+      "meta": { "cpu_temp_c": 58.3, "threshold_c": 70 }
+    },
+    {
+      "id": "evt_013",
+      "ts": "2026-10-09T09:27:48+07:00",
+      "level": "info",
+      "source": "room",
+      "type": "occupancy_changed",
+      "message": "คนเข้าห้อง → รวม 11 คน",
+      "meta": { "from": 10, "to": 11, "delta": 1, "capacity": 20 }
+    },
+    {
+      "id": "evt_012",
+      "ts": "2026-10-09T09:26:10+07:00",
+      "level": "warn",
+      "source": "pi",
+      "type": "cpu_temp_high",
+      "message": "อุณหภูมิ CPU สูง 71.2 °C",
+      "meta": { "cpu_temp_c": 71.2, "threshold_c": 70, "throttled": false }
+    },
+    {
+      "id": "evt_011",
+      "ts": "2026-10-09T09:24:36+07:00",
+      "level": "warn",
+      "source": "board-02",
+      "type": "signal_weak",
+      "message": "Board-02 สัญญาณ Wi-Fi อ่อน (-78 dBm)",
+      "meta": { "rssi_dbm": -78, "threshold_dbm": -75 }
+    },
+    {
+      "id": "evt_010",
+      "ts": "2026-10-09T09:21:02+07:00",
+      "level": "info",
+      "source": "room",
+      "type": "occupancy_changed",
+      "message": "คนเข้าห้อง → รวม 10 คน",
+      "meta": { "from": 9, "to": 10, "delta": 1, "capacity": 20 }
+    },
+    {
+      "id": "evt_009",
+      "ts": "2026-10-09T09:18:44+07:00",
+      "level": "info",
+      "source": "room",
+      "type": "occupancy_changed",
+      "message": "คนออกจากห้อง → เหลือ 9 คน",
+      "meta": { "from": 10, "to": 9, "delta": -1, "capacity": 20 }
+    },
+    {
+      "id": "evt_008",
+      "ts": "2026-10-09T09:15:22+07:00",
+      "level": "error",
+      "source": "board-03",
+      "type": "disconnected",
+      "message": "Board-03 หลุดการเชื่อมต่อ",
+      "meta": { "last_heartbeat": "2026-10-09T09:14:52+07:00", "timeout_s": 30 }
+    },
+    {
+      "id": "evt_007",
+      "ts": "2026-10-09T09:12:09+07:00",
+      "level": "info",
+      "source": "room",
+      "type": "occupancy_changed",
+      "message": "คนเข้าห้อง → รวม 10 คน",
+      "meta": { "from": 9, "to": 10, "delta": 1, "capacity": 20 }
+    },
+    {
+      "id": "evt_006",
+      "ts": "2026-10-09T09:05:47+07:00",
+      "level": "ok",
+      "source": "board-02",
+      "type": "reconnected",
+      "message": "Board-02 กลับมาออนไลน์",
+      "meta": { "downtime_s": 12, "rssi_dbm": -61 }
+    },
+    {
+      "id": "evt_005",
+      "ts": "2026-10-09T09:05:35+07:00",
+      "level": "error",
+      "source": "board-02",
+      "type": "disconnected",
+      "message": "Board-02 หลุดการเชื่อมต่อ",
+      "meta": { "last_heartbeat": "2026-10-09T09:05:03+07:00", "timeout_s": 30 }
+    },
+    {
+      "id": "evt_004",
+      "ts": "2026-10-09T09:02:10+07:00",
+      "level": "info",
+      "source": "room",
+      "type": "occupancy_changed",
+      "message": "คนเข้าห้อง → รวม 9 คน",
+      "meta": { "from": 8, "to": 9, "delta": 1, "capacity": 20 }
+    },
+    {
+      "id": "evt_003",
+      "ts": "2026-10-09T09:00:03+07:00",
+      "level": "ok",
+      "source": "system",
+      "type": "collection_started",
+      "message": "เริ่มเก็บข้อมูลรอบใหม่",
+      "meta": { "interval_s": 60, "boards_expected": 3 }
+    },
+    {
+      "id": "evt_002",
+      "ts": "2026-10-09T08:59:55+07:00",
+      "level": "ok",
+      "source": "board-03",
+      "type": "connected",
+      "message": "Board-03 เชื่อมต่อสำเร็จ",
+      "meta": { "rssi_dbm": -58, "firmware": "1.4.2" }
+    },
+    {
+      "id": "evt_001",
+      "ts": "2026-10-09T08:59:48+07:00",
+      "level": "ok",
+      "source": "pi",
+      "type": "service_started",
+      "message": "เริ่มบริการรับข้อมูลบน Raspberry Pi",
+      "meta": { "service": "room-monitor", "version": "0.9.1" }
+    }
+  ]
+}
