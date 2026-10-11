@@ -58,7 +58,7 @@ export function CompareCard({ today }: CompareCardProps) {
   ];
 
   return (
-    <Card className="bg-[#1e1e1e] border-[#2a2a2a]">
+    <Card>
       <CardHeader>
         <CardTitle className="font-bold text-gray-200">เทียบกับวันอื่น</CardTitle>
       </CardHeader>

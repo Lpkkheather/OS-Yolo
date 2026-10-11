@@ -11,7 +11,7 @@ export function CameraPreview() {
   const src = cameraPreviewUrl();
 
   return (
-    <div className="rounded-xl bg-[#1e1e1e] border border-[#2a2a2a] overflow-hidden">
+    <div className="rounded-xl bg-[#1e1e1e]  overflow-hidden">
       <div className="px-4 py-3 border-b border-[#2a2a2a]">
         <h3 className="text-sm font-medium text-gray-200">ภาพอ้างอิงมุมกล้อง</h3>
         <p className="text-xs text-gray-500 mt-0.5">zones_preview.jpg — คนถูกเบลอแล้ว</p>

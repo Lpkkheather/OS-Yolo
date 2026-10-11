@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSseToday } from "@/lib/hooks/useSseToday";
+import { useSseToday, TodayData } from "@/lib/hooks/useSseToday";
 import { StatusBar } from "@/lib/components/StatusBar";
 import { PeopleStats } from "@/lib/components/PeopleStats";
 import { HourlyChart } from "@/lib/components/HourlyChart";
@@ -10,6 +10,7 @@ import { CameraPreview } from "@/lib/components/CameraPreview";
 import { LiveEventLog } from "@/lib/components/LiveEventLog";
 import { SystemHealth } from "@/lib/components/SystemHealth";
 import { fetchToday, fetchStatus } from "@/lib/api";
+import type { StatusResponse } from "@/lib/types/api";
 
 function CardShell({
   title,
@@ -30,16 +31,10 @@ function CardShell({
   );
 }
 
-function Skeleton({ h = 40 }: { h?: number }) {
-  return (
-    <div className="animate-pulse rounded-xl bg-[#2a2a2a]" style={{ height: h }} />
-  );
-}
-
 export function DashboardClient() {
   // Initial data from server (for first render)
-  const [serverToday, setServerToday] = useState<any>(null);
-  const [serverStatus, setServerStatus] = useState<any>(null);
+  const [serverToday, setServerToday] = useState<TodayData | null>(null);
+  const [serverStatus, setServerStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Real-time data from SSE
@@ -65,45 +60,17 @@ export function DashboardClient() {
   if (loading) {
     return (
       <div className="space-y-4 max-w-7xl mx-auto">
-        <StatusBar />
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Skeleton h={300} />
-          <div className="lg:col-span-2"><Skeleton h={300} /></div>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Skeleton h={200} />
-          <Skeleton h={200} />
-          <Skeleton h={200} />
-        </div>
-        <Skeleton h={60} />
+        <StatusBar status={null} today={undefined} />
       </div>
     );
   }
 
-  // Connection indicator
-  const connectionDot = connected ? (
-    <span className="relative flex h-2 w-2">
-      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-    </span>
-  ) : (
-    <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-500" />
-  );
-
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
-      {/* <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-semibold text-white">Dashboard Real-time</h1>
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          {connectionDot}
-          <span>{connected ? "🟢 Real-time (SSE)" : "🔴 Offline"}</span>
-        </div>
-      </div> */}
-
       <StatusBar status={status} today={today} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Suspense fallback={<Skeleton h={300} />}>
+        <Suspense>
           <PeopleStats today={today} />
         </Suspense>
 
@@ -124,7 +91,7 @@ export function DashboardClient() {
         <div className="lg:col-span-1">
           <LiveEventLog />
         </div>
-        <Suspense fallback={<Skeleton h={200} />}>
+        <Suspense>
           <CompareCard today={today} />
         </Suspense>
         <CameraPreview />
@@ -137,5 +104,5 @@ export function DashboardClient() {
   );
 }
 
-// Re-export CardShell and Skeleton for other components if needed
-export { CardShell, Skeleton };
+// Re-export CardShell for other components if needed
+export { CardShell };

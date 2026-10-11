@@ -5,7 +5,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { StatusResponse } from "@/lib/types/api";
+import type { StatusResponse, TodayData } from "@/lib/types/api";
 
 type ConnectionLevel = "online" | "stale" | "offline" | "unknown";
 
@@ -43,7 +43,7 @@ const LABEL: Record<ConnectionLevel, string> = {
 
 interface StatusBarProps {
   status: StatusResponse | null;
-  today: unknown; // for camera/model info
+  today: TodayData | null | undefined; // for camera/model info
 }
 
 export function StatusBar({ status, today }: StatusBarProps) {
@@ -51,7 +51,6 @@ export function StatusBar({ status, today }: StatusBarProps) {
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLevel(getLevel(status));
   }, [status]);
 
@@ -59,15 +58,6 @@ export function StatusBar({ status, today }: StatusBarProps) {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
-
-  const lastTime = status?.lastDataTime
-    ? new Intl.DateTimeFormat("th-TH", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        timeZone: "Asia/Bangkok",
-      }).format(new Date(status.lastDataTime))
-    : "—";
 
   const nowStr = now
     ? now.toLocaleString("th-TH", {
@@ -92,12 +82,6 @@ export function StatusBar({ status, today }: StatusBarProps) {
       <span className="text-gray-300 font-mono">{nowStr}</span>
 
       <div className="flex items-center gap-4">
-        {/* เวลาข้อมูลล่าสุด */}
-        <span className="text-gray-400">
-          ข้อมูลล่าสุด:{" "}
-          <span className="text-gray-200 font-mono">{lastTime}</span>
-        </span>
-
         {/* ชื่อกล้อง / โมเดล */}
         <span className="text-gray-500 text-xs">
           {camera} · {model}

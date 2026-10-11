@@ -5,7 +5,7 @@
 "use client";
 
 interface PeopleStatsProps {
-  today: any;
+  today: string;
 }
 
 export function PeopleStats({ today }: PeopleStatsProps) {
@@ -49,7 +49,7 @@ export function PeopleStats({ today }: PeopleStatsProps) {
   return (
     <div className="space-y-4">
       {/* ตัวเลขหลัก — คนในห้องตอนนี้ */}
-      <div className="rounded-xl bg-[#1e1e1e] border border-[#2a2a2a] p-6 flex flex-col items-center text-center">
+      <div className="rounded-xl bg-[#1e1e1e] border p-6 flex flex-col items-center text-center">
         <span className="text-gray-400 text-sm mb-1">คนในห้องตอนนี้</span>
         <div className="flex items-baseline gap-2">
           <span className="text-gray-500 text-2xl">ประมาณ</span>
