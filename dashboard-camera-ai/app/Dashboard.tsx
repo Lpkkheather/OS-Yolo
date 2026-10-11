@@ -18,9 +18,9 @@ function CardShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl bg-[#1e1e1e] border border-[#2a2a2a] overflow-hidden">
+    <div className="rounded-xl bg-[#1e1e1e] overflow-hidden">
       {title && (
-        <div className="px-4 py-3 border-b border-[#2a2a2a]">
+        <div className="h-full px-4 py-3 border-b border-[#2a2a2a]">
           <h3 className="text-sm font-medium text-gray-200">{title}</h3>
         </div>
       )}
@@ -29,7 +29,7 @@ function CardShell({
   );
 }
 
-export function DashboardClient() {
+export function Dashboard() {
   // Initial data from server (for first render)
   const [serverToday, setServerToday] = useState<TodayData | null>(null);
   const [serverStatus, setServerStatus] = useState<StatusResponse | null>(null);
@@ -72,13 +72,13 @@ export function DashboardClient() {
           <PeopleStats today={today} />
         </Suspense>
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 min-h-[280px]"> 
           <CardShell title="เข้า / ออก รายชั่วโมง">
           
             {today ? (
               <HourlyChart bars={today.hourlyBars} />
             ) : (
-              <div className="flex h-64 items-center justify-center text-gray-500 text-sm">
+              <div className="flex h-full items-center justify-center text-gray-500 text-sm">
                 ไม่สามารถโหลดกราฟได้
               </div>
             )}
@@ -86,7 +86,7 @@ export function DashboardClient() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="lg:col-span-1">
           <LiveEventLog />
         </div>

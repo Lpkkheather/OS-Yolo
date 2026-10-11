@@ -44,7 +44,7 @@ export function HourlyChart({ bars }: Props) {
   }
 
   return (
-    <div style={{ height: 280 }}>
+    <div style={{ width: '100%', height: 280 }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} barCategoryGap="30%">
           <CartesianGrid strokeDasharray="2 6" vertical={false} stroke="#333" />

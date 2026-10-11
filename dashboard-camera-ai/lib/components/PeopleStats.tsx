@@ -63,9 +63,9 @@ export function PeopleStats({ today }: PeopleStatsProps) {
       </div>
 
       {/* การ์ดย่อย 4 ใบ */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-[#1e1e1e] ">
         {cards.map((c) => (
-          <div key={c.label} className="rounded-xl bg-[#1e1e1e] border border-[#2a2a2a] px-4 py-4">
+          <div key={c.label} className="rounded-xl bg-[#161616] border border-[#2a2a2a] px-4 py-4">
             <p className="text-gray-400 text-xs mb-1">{c.label}</p>
             <p className={`text-2xl font-semibold ${c.color}`}>{c.value}</p>
             <p className="text-gray-500 text-xs mt-0.5">{c.sub}</p>

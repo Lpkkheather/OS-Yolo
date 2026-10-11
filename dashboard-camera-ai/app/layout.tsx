@@ -35,7 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         notoSans.variable,
       )}
     >
-      <body className="h-full bg-[#121212] text-white">
+      <body className="h-full bg-svg text-white">
         <div className="flex flex-col flex-1 overflow-auto">
           <Header />
           <main className="flex-1 p-6">{children}</main>

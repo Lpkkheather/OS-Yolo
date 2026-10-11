@@ -86,7 +86,7 @@ export function LiveEventLog({ date }: { date?: string }) {
           {resp?.events.map((ev: LogEvent, i) => (
             <div
               key={ev.id ?? `time-${i}`}
-              className="flex gap-3 items-start text-sm border-b border-[#2a2a2a] pb-2 last:border-0 last:pb-0"
+              className="flex gap-3 items-start text-sm border-b  pb-2 last:border-0 last:pb-0"
             >
               <div className="flex-1 min-w-0">
                 <p className="text-gray-200 leading-snug">{ev.message}</p>
