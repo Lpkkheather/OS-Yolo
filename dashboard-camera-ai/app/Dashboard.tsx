@@ -30,19 +30,15 @@ function CardShell({
 }
 
 export function Dashboard() {
-  // Initial data from server (for first render)
+
   const [serverToday, setServerToday] = useState<TodayData | null>(null);
   const [serverStatus, setServerStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Real-time data from SSE
   const { data: sseData } = useSseToday();
-
-  // Merge: use SSE data if available, otherwise server data
   const today = sseData ?? serverToday;
   const status = serverStatus;
 
-  // Fetch initial data on mount
   useEffect(() => {
     let mounted = true;
     Promise.allSettled([fetchToday(), fetchStatus()]).then(([todayRes, statusRes]) => {

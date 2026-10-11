@@ -1,8 +1,3 @@
-// ============================================================
-// SystemHealth — แถบสุขภาพเครื่อง (FPS, CPU temp, model, camera)
-// ดึงจาก lastRow ของ /api/status
-// ทำทิ้งไว้ก่อน — ยังไม่มี Pi จริง
-// ============================================================
 import type { MinuteRow } from "@/lib/types/api";
 
 interface Props {
@@ -22,14 +17,13 @@ export function SystemHealth({ row }: Props) {
   }
 
   const fps = row.fps != null ? row.fps.toFixed(1) : "—";
-  const temp =
-    row.cpu_temp_c != null ? `${row.cpu_temp_c.toFixed(1)} °C` : "—";
+  const temp = row.cpu_temp_c != null ? `${row.cpu_temp_c.toFixed(1)} °C` : "—";
   const tempColor =
     row.cpu_temp_c != null && row.cpu_temp_c > 75
       ? "text-red-400"
       : row.cpu_temp_c != null && row.cpu_temp_c > 65
-      ? "text-yellow-400"
-      : "text-gray-400";
+        ? "text-yellow-400"
+        : "text-gray-400";
 
   return (
     <div className="flex gap-5 flex-wrap text-xs px-1">

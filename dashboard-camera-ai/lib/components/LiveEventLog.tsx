@@ -1,15 +1,5 @@
-// ============================================================
-// LiveEventLog — รายการเหตุการณ์ ดึงจาก GET /api/events
-// Client Component — refresh ทุก 60 วินาที
-// ============================================================
 "use client";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useEffect, useState, useCallback } from "react";
 import { fetchEvents } from "@/lib/api";
 import formatDate from "@/lib/utils";

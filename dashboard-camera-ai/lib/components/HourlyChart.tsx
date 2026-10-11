@@ -1,7 +1,3 @@
-// ============================================================
-// HourlyChart — กราฟแท่งรายชั่วโมง เข้า/ออก แยกสี
-// Client Component — รับ data จาก Server Component แม่
-// ============================================================
 "use client";
 
 import {
@@ -28,7 +24,11 @@ interface Props {
 
 export function HourlyChart({ bars }: Props) {
   // Handle both array and object (in case API returns object)
-  const barArray: HourlyBarData[] = Array.isArray(bars) ? bars : (bars ? Object.values(bars) : []);
+  const barArray: HourlyBarData[] = Array.isArray(bars)
+    ? bars
+    : bars
+      ? Object.values(bars)
+      : [];
   const data = barArray.map((b: HourlyBarData) => ({
     hour: `${String(b.hour).padStart(2, "0")}:00`,
     เข้า: b.in,
@@ -44,7 +44,7 @@ export function HourlyChart({ bars }: Props) {
   }
 
   return (
-    <div style={{ width: '100%', height: 280 }}>
+    <div style={{ width: "100%", height: 280 }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} barCategoryGap="30%">
           <CartesianGrid strokeDasharray="2 6" vertical={false} stroke="#333" />

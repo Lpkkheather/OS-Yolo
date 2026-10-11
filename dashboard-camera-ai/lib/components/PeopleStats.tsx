@@ -1,7 +1,3 @@
-// ============================================================
-// PeopleStats — ตัวเลขหลัก: คนในห้อง, เข้า/ออกวันนี้, peak, สูงสุด
-// Client Component — รับ props `today` จาก parent (real-time via SSE)
-// ============================================================
 "use client";
 
 import type { TodayData } from "@/lib/hooks/useSseToday";
@@ -37,7 +33,9 @@ export function PeopleStats({ today }: PeopleStatsProps) {
       value: today.peakHour
         ? `${String(today.peakHour.hour).padStart(2, "0")}:00 น.`
         : "—",
-      sub: today.peakHour ? `${today.peakHour.inCount} คนเข้า` : "ยังไม่มีข้อมูล",
+      sub: today.peakHour
+        ? `${today.peakHour.inCount} คนเข้า`
+        : "ยังไม่มีข้อมูล",
       color: "text-yellow-400",
     },
     {
@@ -65,7 +63,10 @@ export function PeopleStats({ today }: PeopleStatsProps) {
       {/* การ์ดย่อย 4 ใบ */}
       <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-[#1e1e1e] ">
         {cards.map((c) => (
-          <div key={c.label} className="rounded-xl bg-[#161616] border border-[#2a2a2a] px-4 py-4">
+          <div
+            key={c.label}
+            className="rounded-xl bg-[#161616] border border-[#2a2a2a] px-4 py-4"
+          >
             <p className="text-gray-400 text-xs mb-1">{c.label}</p>
             <p className={`text-2xl font-semibold ${c.color}`}>{c.value}</p>
             <p className="text-gray-500 text-xs mt-0.5">{c.sub}</p>

@@ -1,16 +1,7 @@
-// ============================================================
-// CompareCard — เปรียบเทียบวันนี้กับเมื่อวาน/สัปดาห์ก่อน/เฉลี่ย 7 วัน
-// Client Component
-// ============================================================
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompareResponse } from "@/lib/api";
 
 interface CompareStat {
@@ -26,25 +17,44 @@ interface CompareData {
 }
 
 export function CompareCard() {
-  // Fetch compare data on client side
   const [compareData, setCompareData] = useState<CompareData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/compare")
-      .then((r) => r.json())
-      .then((d: CompareResponse) => {
-        setCompareData(d);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    let mounted = true;
+
+    const fetchData = async () => {
+      try {
+        const res = await fetch("/api/compare");
+        if (!res.ok) throw new Error("Failed to fetch");
+        const data: CompareResponse = await res.json();
+        if (mounted) {
+          setCompareData(data);
+          setLoading(false);
+        }
+      } catch {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    fetchData();
+
+    // Poll every 60 seconds
+    const interval = setInterval(fetchData, 60_000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   if (loading || !compareData) {
     return (
-      <Card>
+      <Card className="bg-[#1e1e1e] border-[#2a2a2a]">
         <CardHeader>
-          <CardTitle className="font-bold text-gray-200">เทียบกับวันอื่น</CardTitle>
+          <CardTitle className="font-bold text-gray-200">
+            เทียบกับวันอื่น
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="animate-pulse space-y-2">
@@ -67,7 +77,9 @@ export function CompareCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="font-bold text-gray-200">เทียบกับวันอื่น</CardTitle>
+        <CardTitle className="font-bold text-gray-200">
+          เทียบกับวันอื่น
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-3 text-xs w-full text-gray-500 border-b border-[#2a2a2a] pb-2">
@@ -87,7 +99,10 @@ export function CompareCard() {
         </div>
 
         {rows.map((r) => (
-          <div key={r.label} className="grid grid-cols-3 text-md text-gray-400 mt-4">
+          <div
+            key={r.label}
+            className="grid grid-cols-3 text-md text-gray-400 mt-4"
+          >
             <span>{r.label}</span>
             <span className="text-center">{r.stat.in}</span>
             <span className="text-center">{r.stat.out}</span>

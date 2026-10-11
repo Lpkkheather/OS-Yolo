@@ -9,7 +9,6 @@ import type { StatusResponse } from "@/lib/types/api";
 
 type ConnectionLevel = "online" | "stale" | "offline" | "unknown";
 
-/** คำนวณระดับสถานะจาก mqttStatus + อายุข้อมูลล่าสุด */
 function getLevel(data: StatusResponse | null): ConnectionLevel {
   if (!data) return "unknown";
   if (data.mqttStatus === "offline") return "offline";
@@ -19,7 +18,7 @@ function getLevel(data: StatusResponse | null): ConnectionLevel {
     if (ageMin > 5) return "stale";
     return "online";
   }
-  // mqttStatus === 'unknown' — ดูจากอายุข้อมูลแทน
+
   if (!data.lastDataTime) return "unknown";
   const ageMin = (Date.now() - new Date(data.lastDataTime).getTime()) / 60000;
   if (ageMin > 10) return "offline";
@@ -43,10 +42,10 @@ const LABEL: Record<ConnectionLevel, string> = {
 
 interface StatusBarProps {
   status: StatusResponse | null;
-  today: unknown; // for camera/model info
+  today: unknown;
 }
 
-export function StatusBar({ status, today }: StatusBarProps) {
+export function StatusBar({ status }: StatusBarProps) {
   const [level, setLevel] = useState<ConnectionLevel>("unknown");
   const [now, setNow] = useState<Date | null>(null);
 
@@ -60,8 +59,6 @@ export function StatusBar({ status, today }: StatusBarProps) {
     return () => clearInterval(t);
   }, []);
 
-
-
   const nowStr = now
     ? now.toLocaleString("th-TH", {
         weekday: "short",
@@ -74,8 +71,6 @@ export function StatusBar({ status, today }: StatusBarProps) {
         timeZone: "Asia/Bangkok",
       })
     : "--";
-
- 
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#1e1e1e] border border-[#2a2a2a] px-4 py-2 text-sm">
