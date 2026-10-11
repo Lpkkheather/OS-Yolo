@@ -1,8 +1,25 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+
+export interface MinuteRow {
+  time: string;
+  seconds: number;
+  camera: string;
+  in: number;
+  out: number;
+  in_zone_avg: number;
+  in_zone_max: number;
+  visitors: number;
+  in_today: number;
+  out_today: number;
+  visitors_today: number;
+  fps: number;
+  cpu_temp_c: number | null;
+  model: string;
+}
 
 export interface TodayData {
   date: string;
@@ -13,8 +30,14 @@ export interface TodayData {
   peakHour: { hour: number; inCount: number } | null;
   maxInRoom: number;
   hourlyBars: { hour: number; in: number; out: number }[];
-  minuteRows: any[];
-  lastRow: any;
+  minuteRows: MinuteRow[];
+  lastRow: MinuteRow | null;
+}
+
+export interface StatusResponse {
+  mqttStatus: "online" | "offline" | "unknown";
+  lastDataTime: string | null;
+  lastRow: MinuteRow | null;
 }
 
 export interface MqttData {
@@ -54,7 +77,7 @@ function mergeMqttIntoToday(existing: TodayData | undefined, mqtt: MqttData): To
     lastRow: null,
   };
 
-  const newMinuteRow = {
+  const newMinuteRow: MinuteRow = {
     time: mqtt.time,
     seconds: mqtt.seconds,
     camera: mqtt.camera,

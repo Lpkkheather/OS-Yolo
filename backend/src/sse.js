@@ -65,6 +65,8 @@ export function startSse(app) {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    // Prevent Cloudflare/proxy timeouts
+    res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
     clients.add(res);
@@ -77,7 +79,18 @@ export function startSse(app) {
       sendToday(res);
     }
 
+    // Heartbeat every 15 seconds to prevent proxy/timeouts (Cloudflare free tier ~30-100s idle timeout)
+    const heartbeatInterval = setInterval(() => {
+      if (res.writableEnded || res.destroyed) {
+        clearInterval(heartbeatInterval);
+        return;
+      }
+      // Send heartbeat as comment (valid SSE, ignored by EventSource)
+      res.write(": heartbeat\n\n");
+    }, 15000);
+
     req.on("close", () => {
+      clearInterval(heartbeatInterval);
       clients.delete(res);
       console.log("[SSE] Client disconnected, total:", clients.size);
     });

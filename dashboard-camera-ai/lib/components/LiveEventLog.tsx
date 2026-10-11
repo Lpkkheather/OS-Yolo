@@ -5,15 +5,12 @@
 "use client";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { useEffect, useState, useCallback } from "react";
-import type { LogEvent, EventLogResponse } from "@/lib/types/api";
 import { fetchEvents } from "@/lib/api";
 import formatDate from "@/lib/utils";
 
@@ -30,6 +27,26 @@ const LEVEL_LABEL: Record<string, string> = {
   warn: "เตือน",
   error: "ผิดพลาด",
 };
+
+interface LogEvent {
+  type: "camera_offline" | "low_fps" | "overcrowd" | "after_hours";
+  severity: "info" | "warning" | "critical";
+  time: string;
+  message: string;
+  details: Record<string, unknown>;
+  id?: string;
+  level: "info" | "warning" | "critical";
+  ts: string;
+}
+
+interface EventLogResponse {
+  date: string;
+  events: LogEvent[];
+  generated_at: string;
+  timezone: string;
+  levels: Record<string, number>;
+  total: number;
+}
 
 export function LiveEventLog({ date }: { date?: string }) {
   const [resp, setResp] = useState<EventLogResponse | null>(null);
@@ -49,8 +66,6 @@ export function LiveEventLog({ date }: { date?: string }) {
   }, [date]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    load();
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
   }, [load]);
@@ -80,17 +95,17 @@ export function LiveEventLog({ date }: { date?: string }) {
               ไม่มีเหตุการณ์วันนี้
             </p>
           )}
-          {resp?.events.map((ev: LogEvent,i) => (
-            <div 
+          {resp?.events.map((ev: LogEvent, i) => (
+            <div
               key={ev.id ?? `time-${i}`}
               className="flex gap-3 items-start text-sm border-b border-[#2a2a2a] pb-2 last:border-0 last:pb-0"
             >
               <span
                 className={`shrink-0 text-xs px-1.5 py-0.5 rounded border font-medium ${
-                  LEVEL_COLOR[ev.level] ?? "bg-gray-500/20 text-gray-300"
+                  LEVEL_COLOR[ev.severity] ?? "bg-gray-500/20 text-gray-300"
                 }`}
               >
-                {LEVEL_LABEL[ev.level] ?? ev.level}
+                {LEVEL_LABEL[ev.severity] ?? ev.severity}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-gray-200 leading-snug">{ev.message}</p>
@@ -103,6 +118,5 @@ export function LiveEventLog({ date }: { date?: string }) {
         </div>
       </CardContent>
     </Card>
-    
   );
 }

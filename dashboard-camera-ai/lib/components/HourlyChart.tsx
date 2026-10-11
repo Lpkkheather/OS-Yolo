@@ -14,16 +14,22 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import type { HourlyBar } from "@/lib/types/api";
+
+interface HourlyBarData {
+  hour: number;
+  in: number;
+  out: number;
+  visitors?: number;
+}
 
 interface Props {
-  bars: HourlyBar[];
+  bars: HourlyBarData[];
 }
 
 export function HourlyChart({ bars }: Props) {
   // Handle both array and object (in case API returns object)
-  const barArray = Array.isArray(bars) ? bars : (bars ? Object.values(bars) : []);
-  const data = barArray.map((b) => ({
+  const barArray: HourlyBarData[] = Array.isArray(bars) ? bars : (bars ? Object.values(bars) : []);
+  const data = barArray.map((b: HourlyBarData) => ({
     hour: `${String(b.hour).padStart(2, "0")}:00`,
     เข้า: b.in,
     ออก: b.out,

@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSseToday, TodayData } from "@/lib/hooks/useSseToday";
+import { useSseToday, TodayData, StatusResponse } from "@/lib/hooks/useSseToday";
 import { StatusBar } from "@/lib/components/StatusBar";
 import { PeopleStats } from "@/lib/components/PeopleStats";
 import { HourlyChart } from "@/lib/components/HourlyChart";
@@ -10,7 +10,6 @@ import { CameraPreview } from "@/lib/components/CameraPreview";
 import { LiveEventLog } from "@/lib/components/LiveEventLog";
 import { SystemHealth } from "@/lib/components/SystemHealth";
 import { fetchToday, fetchStatus } from "@/lib/api";
-import type { StatusResponse } from "@/lib/types/api";
 
 function CardShell({
   title,
@@ -38,7 +37,7 @@ export function DashboardClient() {
   const [loading, setLoading] = useState(true);
 
   // Real-time data from SSE
-  const { data: sseData, connected } = useSseToday();
+  const { data: sseData } = useSseToday();
 
   // Merge: use SSE data if available, otherwise server data
   const today = sseData ?? serverToday;
@@ -92,7 +91,7 @@ export function DashboardClient() {
           <LiveEventLog />
         </div>
         <Suspense>
-          <CompareCard today={today} />
+          <CompareCard />
         </Suspense>
         <CameraPreview />
       </div>

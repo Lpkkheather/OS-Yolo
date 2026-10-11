@@ -11,16 +11,17 @@ import {
 } from "recharts";
 // import { MOCK_STATIC, OccupancyData } from "../mockdata/areadata";
 
+const data = [
+  { time: "00:00", today: 10, yesterday: 8 },
+  { time: "04:00", today: 8, yesterday: 6 },
+  { time: "08:00", today: 25, yesterday: 20 },
+  { time: "12:00", today: 40, yesterday: 35 },
+  { time: "16:00", today: 50, yesterday: 45 },
+  { time: "20:00", today: 30, yesterday: 28 },
+  { time: "23:59", today: 15, yesterday: 12 },
+];
 
-const fmt = (m: number) =>
-  `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-
-export default function AreaChart({
-  // occ = MOCK_STATIC,
-}) {
-
-
-
+export default function AreaChart() {
   return (
     <div style={{ height: 300 }}>
       <ResponsiveContainer width="100%" height="100%">

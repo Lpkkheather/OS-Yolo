@@ -1,6 +1,6 @@
 // ============================================================
 // CompareCard — เปรียบเทียบวันนี้กับเมื่อวาน/สัปดาห์ก่อน/เฉลี่ย 7 วัน
-// Client Component — รับ props `today` จาก parent
+// Client Component
 // ============================================================
 "use client";
 
@@ -8,25 +8,32 @@ import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CompareResponse } from "@/lib/api";
 
-interface CompareCardProps {
-  today: any;
+interface CompareStat {
+  in: number;
+  out: number;
 }
 
-export function CompareCard({ today }: CompareCardProps) {
+interface CompareData {
+  today: { in: number; out: number };
+  yesterday: CompareStat;
+  lastWeek: CompareStat;
+  avg7days: CompareStat;
+}
+
+export function CompareCard() {
   // Fetch compare data on client side
-  const [compareData, setCompareData] = useState<any>(null);
+  const [compareData, setCompareData] = useState<CompareData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/compare")
       .then((r) => r.json())
-      .then((d) => {
+      .then((d: CompareResponse) => {
         setCompareData(d);
         setLoading(false);
       })

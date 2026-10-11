@@ -5,9 +5,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { StatusResponse, TodayData } from "@/lib/types/api";
+import type { StatusResponse } from "@/lib/hooks/useSseToday";
 
 type ConnectionLevel = "online" | "stale" | "offline" | "unknown";
+
+const DOT: Record<ConnectionLevel, string> = {
+  online: "bg-green-500",
+  stale: "bg-yellow-400",
+  offline: "bg-red-500",
+  unknown: "bg-gray-500",
+};
+
+const LABEL: Record<ConnectionLevel, string> = {
+  online: "เชื่อมต่อแล้ว",
+  stale: "ข้อมูลล่าช้า",
+  offline: "ออฟไลน์",
+  unknown: "ไม่ทราบสถานะ",
+};
 
 /** คำนวณระดับสถานะจาก mqttStatus + อายุข้อมูลล่าสุด */
 function getLevel(data: StatusResponse | null): ConnectionLevel {
@@ -27,32 +41,16 @@ function getLevel(data: StatusResponse | null): ConnectionLevel {
   return "online";
 }
 
-const DOT: Record<ConnectionLevel, string> = {
-  online: "bg-green-500",
-  stale: "bg-yellow-400",
-  offline: "bg-red-500",
-  unknown: "bg-gray-500",
-};
-
-const LABEL: Record<ConnectionLevel, string> = {
-  online: "เชื่อมต่อแล้ว",
-  stale: "ข้อมูลล่าช้า",
-  offline: "ออฟไลน์",
-  unknown: "ไม่ทราบสถานะ",
-};
-
 interface StatusBarProps {
   status: StatusResponse | null;
-  today: TodayData | null | undefined; // for camera/model info
+  today: import("@/lib/hooks/useSseToday").TodayData | null | undefined; // for camera/model info
 }
 
 export function StatusBar({ status, today }: StatusBarProps) {
-  const [level, setLevel] = useState<ConnectionLevel>("unknown");
   const [now, setNow] = useState<Date | null>(null);
 
-  useEffect(() => {
-    setLevel(getLevel(status));
-  }, [status]);
+  // Derive level from status (no need for separate state)
+  const level = getLevel(status);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
