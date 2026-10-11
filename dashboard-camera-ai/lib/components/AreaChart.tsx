@@ -9,22 +9,16 @@ import {
   CartesianGrid,
   ResponsiveContainer,
 } from "recharts";
-import { MOCK_STATIC, OccupancyData } from "../mockdata/areadata";
+// import { MOCK_STATIC, OccupancyData } from "../mockdata/areadata";
 
 
 const fmt = (m: number) =>
   `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
 export default function AreaChart({
-  occ = MOCK_STATIC,
-}: {
-  occ?: OccupancyData;
+  // occ = MOCK_STATIC,
 }) {
-  const data = occ.today.map((p, i) => ({
-    time: fmt(p.t),
-    today: p.inside,
-    yesterday: occ.yesterday[i]?.inside ?? null,
-  }));
+
 
 
   return (

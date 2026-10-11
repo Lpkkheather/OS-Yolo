@@ -1,0 +1,141 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import { useSseToday } from "@/lib/hooks/useSseToday";
+import { StatusBar } from "@/lib/components/StatusBar";
+import { PeopleStats } from "@/lib/components/PeopleStats";
+import { HourlyChart } from "@/lib/components/HourlyChart";
+import { CompareCard } from "@/lib/components/CompareCard";
+import { CameraPreview } from "@/lib/components/CameraPreview";
+import { LiveEventLog } from "@/lib/components/LiveEventLog";
+import { SystemHealth } from "@/lib/components/SystemHealth";
+import { fetchToday, fetchStatus } from "@/lib/api";
+
+function CardShell({
+  title,
+  children,
+}: {
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl bg-[#1e1e1e] border border-[#2a2a2a] overflow-hidden">
+      {title && (
+        <div className="px-4 py-3 border-b border-[#2a2a2a]">
+          <h3 className="text-sm font-medium text-gray-200">{title}</h3>
+        </div>
+      )}
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
+function Skeleton({ h = 40 }: { h?: number }) {
+  return (
+    <div className="animate-pulse rounded-xl bg-[#2a2a2a]" style={{ height: h }} />
+  );
+}
+
+export function DashboardClient() {
+  // Initial data from server (for first render)
+  const [serverToday, setServerToday] = useState<any>(null);
+  const [serverStatus, setServerStatus] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Real-time data from SSE
+  const { data: sseData, connected } = useSseToday();
+
+  // Merge: use SSE data if available, otherwise server data
+  const today = sseData ?? serverToday;
+  const status = serverStatus;
+
+  // Fetch initial data on mount
+  useEffect(() => {
+    let mounted = true;
+    Promise.allSettled([fetchToday(), fetchStatus()]).then(([todayRes, statusRes]) => {
+      if (mounted) {
+        setServerToday(todayRes.status === "fulfilled" ? todayRes.value : null);
+        setServerStatus(statusRes.status === "fulfilled" ? statusRes.value : null);
+        setLoading(false);
+      }
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-4 max-w-7xl mx-auto">
+        <StatusBar />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Skeleton h={300} />
+          <div className="lg:col-span-2"><Skeleton h={300} /></div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Skeleton h={200} />
+          <Skeleton h={200} />
+          <Skeleton h={200} />
+        </div>
+        <Skeleton h={60} />
+      </div>
+    );
+  }
+
+  // Connection indicator
+  const connectionDot = connected ? (
+    <span className="relative flex h-2 w-2">
+      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+    </span>
+  ) : (
+    <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-500" />
+  );
+
+  return (
+    <div className="space-y-4 max-w-7xl mx-auto">
+      {/* <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-semibold text-white">Dashboard Real-time</h1>
+        <div className="flex items-center gap-2 text-sm text-gray-400">
+          {connectionDot}
+          <span>{connected ? "🟢 Real-time (SSE)" : "🔴 Offline"}</span>
+        </div>
+      </div> */}
+
+      <StatusBar status={status} today={today} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Suspense fallback={<Skeleton h={300} />}>
+          <PeopleStats today={today} />
+        </Suspense>
+
+        <div className="lg:col-span-2">
+          <CardShell title="เข้า / ออก รายชั่วโมง">
+            {today ? (
+              <HourlyChart bars={today.hourlyBars} />
+            ) : (
+              <div className="flex h-64 items-center justify-center text-gray-500 text-sm">
+                ไม่สามารถโหลดกราฟได้
+              </div>
+            )}
+          </CardShell>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-1">
+          <LiveEventLog />
+        </div>
+        <Suspense fallback={<Skeleton h={200} />}>
+          <CompareCard today={today} />
+        </Suspense>
+        <CameraPreview />
+      </div>
+
+      <div className="rounded-xl bg-[#1a1a1a] border border-[#222] px-4 py-2.5">
+        <SystemHealth row={status?.lastRow ?? null} />
+      </div>
+    </div>
+  );
+}
+
+// Re-export CardShell and Skeleton for other components if needed
+export { CardShell, Skeleton };

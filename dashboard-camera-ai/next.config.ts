@@ -1,5 +1,9 @@
 import type { NextConfig } from "next";
 
+const BACKEND =
+  process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") ??
+  "http://localhost:4000";
+
 const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
@@ -11,6 +15,18 @@ const nextConfig: NextConfig = {
         as: "*.css",
       },
     },
+  },
+  // Proxy /api/* → Express backend ใน dev
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${BACKEND}/api/:path*`,
+      },
+    ];
+  },
+  images: {
+    remotePatterns: [{ protocol: "http", hostname: "localhost" }],
   },
 };
 
