@@ -6,7 +6,6 @@ import { StatusBar } from "@/lib/components/StatusBar";
 import { PeopleStats } from "@/lib/components/PeopleStats";
 import { HourlyChart } from "@/lib/components/HourlyChart";
 import { CompareCard } from "@/lib/components/CompareCard";
-import { CameraPreview } from "@/lib/components/CameraPreview";
 import { LiveEventLog } from "@/lib/components/LiveEventLog";
 import { SystemHealth } from "@/lib/components/SystemHealth";
 import { fetchToday, fetchStatus } from "@/lib/api";
@@ -75,6 +74,7 @@ export function DashboardClient() {
 
         <div className="lg:col-span-2">
           <CardShell title="เข้า / ออก รายชั่วโมง">
+          
             {today ? (
               <HourlyChart bars={today.hourlyBars} />
             ) : (
@@ -93,7 +93,6 @@ export function DashboardClient() {
         <Suspense>
           <CompareCard />
         </Suspense>
-        <CameraPreview />
       </div>
 
       <div className="rounded-xl bg-[#1a1a1a] border border-[#222] px-4 py-2.5">
