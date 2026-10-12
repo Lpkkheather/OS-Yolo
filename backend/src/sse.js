@@ -26,15 +26,16 @@ function appendToCsv(mqttData) {
     const filePath = getCsvPath();
     const isNew = !existsSync(filePath);
     
-    // Header ถ้าไฟล์ใหม่
+    // Header ถ้าไฟล์ใหม่ - รองรับ 27 fields จาก MQTT
     if (isNew) {
-      const header = "time,seconds,camera,in,out,in_zone_avg,in_zone_max,visitors,in_today,out_today,visitors_today,fps,cpu_temp_c,model\n";
+      const header = "time,seconds,camera,in,out,in_zone_avg,in_zone_max,visitors,in_today,out_today,visitors_today,fps,cpu_temp_c,model,track_id,class_id,confidence,x,y,w,h,in_zone,zone_id,zone_name,line_crossed,line_side,direction\n";
       writeFileSync(filePath, header);
     }
     
     // Escape ค่า
     const escape = (v) => v === null || v === undefined ? "" : String(v);
     
+    // เขียนครบ 27 fields (ใช้ optional chaining ป้องกัน undefined)
     const row = [
       escape(mqttData.time),
       escape(mqttData.seconds),
@@ -50,6 +51,19 @@ function appendToCsv(mqttData) {
       escape(mqttData.fps),
       escape(mqttData.cpu_temp_c),
       escape(mqttData.model),
+      escape(mqttData.track_id),
+      escape(mqttData.class_id),
+      escape(mqttData.confidence),
+      escape(mqttData.x),
+      escape(mqttData.y),
+      escape(mqttData.w),
+      escape(mqttData.h),
+      escape(mqttData.in_zone),
+      escape(mqttData.zone_id),
+      escape(mqttData.zone_name),
+      escape(mqttData.line_crossed),
+      escape(mqttData.line_side),
+      escape(mqttData.direction),
     ].join(",") + "\n";
     
     appendFileSync(filePath, row);
