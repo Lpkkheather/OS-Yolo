@@ -44,10 +44,14 @@ export function readDayCsv(dateStr) {
 
   try {
     const content = readFileSync(filePath, "utf-8");
+    // ใช้ relax_column_count: true เพื่อรองรับทั้ง 14 และ 27 columns
+    // header row จะกำหนด column names, แถวที่มี columns มากกว่า header จะถูก ignore
     const records = parse(content, {
       columns: true,
       skip_empty_lines: true,
       trim: true,
+      relax_column_count: true,
+      relax_column_count_less: true,
     });
 
     return records.map((r) => ({
