@@ -23,7 +23,6 @@ interface Props {
 }
 
 export function HourlyChart({ bars }: Props) {
-  // Handle both array and object (in case API returns object)
   const barArray: HourlyBarData[] = Array.isArray(bars)
     ? bars
     : bars

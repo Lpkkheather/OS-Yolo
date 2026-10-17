@@ -133,5 +133,6 @@
 .bg-svg{
   background-image: url('../public/topography.svg');
   background-repeat: no-repeat;
-  background-size: contain;
+  background-size: auto;
+
 }

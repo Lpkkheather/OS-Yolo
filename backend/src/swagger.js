@@ -7,7 +7,6 @@
  *   description: |
  *     API สำหรับ Dashboard ติดตามจำนวนคนจาก YOLO_Pi (Raspberry Pi 5)
  *     - รับข้อมูลจาก CSV (ไฟล์ที่ YOLO_Pi เขียนทุกนาที)
- *     - รับ MQTT real-time จาก `pi5/people/count` → Broadcast ผ่าน SSE
  *   contact:
  *     name: YOLO_Pi Project
  * servers:
