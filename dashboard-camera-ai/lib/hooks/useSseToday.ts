@@ -26,12 +26,15 @@ export interface TodayData {
   inToday: number;
   outToday: number;
   visitorsToday: number;
-  currentPeople: number;
+  /** คนที่กล้องเห็นในโซนตอนนี้ (socket) — null = ตัวนับไม่ได้ส่งค่าสดมาเกิน 10 วินาที */
+  currentPeople: number | null;
   peakHour: { hour: number; inCount: number } | null;
   maxInRoom: number;
   hourlyBars: { hour: number; in: number; out: number }[];
   minuteRows: MinuteRow[];
   lastRow: MinuteRow | null;
+  /** เวลาของค่าสดล่าสุดจาก Pi (ISO) */
+  liveTime?: string | null;
 }
 
 export interface StatusResponse {
@@ -57,9 +60,34 @@ export interface MqttData {
   model: string;
 }
 
+/** ค่าตอนนี้จาก MQTT pi5/people/live (ทุกวินาที, ไม่ได้เก็บลง CSV). in/out เป็น null เมื่อไม่มีเส้นนับ */
+export interface LiveData {
+  time: string;
+  camera: string;
+  in_zone: number;
+  in_today: number | null;
+  out_today: number | null;
+  visitors_today: number;
+}
+
 export interface SseMessage {
-  type: "TODAY_UPDATE" | "MQTT_UPDATE";
-  payload: TodayData | MqttData;
+  type: "TODAY_UPDATE" | "MQTT_UPDATE" | "LIVE_UPDATE";
+  payload: TodayData | MqttData | LiveData;
+}
+
+/** Merge LiveData into TodayData: เฉพาะตัวเลข "ตอนนี้" — กราฟ/แถวรายนาทีมาจาก MQTT_UPDATE ทุกนาที */
+function mergeLiveIntoToday(base: TodayData, live: LiveData): TodayData {
+  const inToday = live.in_today ?? base.inToday;
+  const outToday = live.out_today ?? base.outToday;
+  return {
+    ...base,
+    inToday,
+    outToday,
+    visitorsToday: live.visitors_today ?? base.visitorsToday,
+    // มีเส้นนับ → เข้า − ออก; ไม่มีเส้น → คนที่เห็นในโซนตอนนี้
+    currentPeople: live.in_today == null ? live.in_zone : Math.max(0, inToday - outToday),
+    maxInRoom: Math.max(base.maxInRoom, live.in_zone ?? 0),
+  };
 }
 
 /** Merge MqttData into TodayData */
@@ -120,7 +148,10 @@ function mergeMqttIntoToday(existing: TodayData | undefined, mqtt: MqttData): To
     inToday: mqtt.in_today ?? base.inToday,
     outToday: mqtt.out_today ?? base.outToday,
     visitorsToday: mqtt.visitors_today ?? base.visitorsToday,
-    currentPeople: Math.max(0, (mqtt.in_today ?? base.inToday) - (mqtt.out_today ?? base.outToday)),
+    // ไม่มีเส้นนับ (in_today = null) → คงค่าคนตอนนี้จาก LIVE_UPDATE ไว้ ไม่รีเซ็ตเป็น 0 ทุกนาที
+    currentPeople: mqtt.in_today == null
+      ? base.currentPeople
+      : Math.max(0, mqtt.in_today - (mqtt.out_today ?? base.outToday)),
     peakHour: peakHour ? { hour: peakHour.hour, inCount: peakHour.in } : null,
     maxInRoom,
     hourlyBars,
@@ -152,6 +183,9 @@ export function useSseToday(initialData?: TodayData) {
           setData(msg.payload as TodayData);
         } else if (msg.type === "MQTT_UPDATE") {
           setData(prev => mergeMqttIntoToday(prev, msg.payload as MqttData));
+        } else if (msg.type === "LIVE_UPDATE") {
+          // backend ส่ง TODAY_UPDATE ก่อนเสมอ → prev มีแล้ว
+          setData(prev => (prev ? mergeLiveIntoToday(prev, msg.payload as LiveData) : prev));
         }
       } catch (e) {
         console.warn("[SSE] Parse error:", e);

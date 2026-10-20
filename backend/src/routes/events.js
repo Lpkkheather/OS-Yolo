@@ -93,16 +93,19 @@ function detectEvents(rows, dateStr) {
   return events;
 }
 
+/** เหตุการณ์ของวันที่กำหนด — ใช้ทั้ง GET /api/events และ socket sync */
+export function buildEvents(dateStr = getTodayStr()) {
+  const events = detectEvents(readDayCsv(dateStr), dateStr);
+
+  // เรียงตามเวลาใหม่สุดก่อน
+  events.sort((a, b) => new Date(b.time) - new Date(a.time));
+
+  return { date: dateStr, events };
+}
+
 router.get("/", (req, res) => {
   try {
-    const dateStr = req.query.date ?? getTodayStr();
-    const rows = readDayCsv(dateStr);
-    const events = detectEvents(rows, dateStr);
-
-    // เรียงตามเวลาใหม่สุดก่อน
-    events.sort((a, b) => new Date(b.time) - new Date(a.time));
-
-    res.json({ date: dateStr, events });
+    res.json(buildEvents(req.query.date ?? getTodayStr()));
   } catch (err) {
     console.error("[events]", err);
     res.status(500).json({ error: err.message });

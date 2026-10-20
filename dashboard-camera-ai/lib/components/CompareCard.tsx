@@ -1,54 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompareResponse } from "@/lib/api";
 
-interface CompareStat {
-  in: number;
-  out: number;
-}
-
-interface CompareData {
-  today: { in: number; out: number };
-  yesterday: CompareStat;
-  lastWeek: CompareStat;
-  avg7days: CompareStat;
-}
-
-export function CompareCard() {
-  const [compareData, setCompareData] = useState<CompareData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const fetchData = async () => {
-      try {
-        const res = await fetch("/api/compare");
-        if (!res.ok) throw new Error("Failed to fetch");
-        const data: CompareResponse = await res.json();
-        if (mounted) {
-          setCompareData(data);
-          setLoading(false);
-        }
-      } catch {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    fetchData();
-
-    // Poll every 60 seconds
-    const interval = setInterval(fetchData, 60_000);
-
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  if (loading || !compareData) {
+// data มาจาก Socket.IO "sync" (GET /api/compare) — อัปเดตพร้อมทั้งหน้า
+export function CompareCard({ data: compareData }: { data: CompareResponse | null }) {
+  if (!compareData) {
     return (
       <Card className="bg-[#1e1e1e] border-[#2a2a2a]">
         <CardHeader>

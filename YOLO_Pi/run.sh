@@ -29,6 +29,24 @@ cd "$(dirname "$0")"
 
 STEP=${1:-}
 [ $# -gt 0 ] && shift
+UNIT=yolo-pi-counter  # systemd service of "bash run.sh service"
+
+camera_free() {  # stop if the counting service has the camera: a second program on it makes the USB camera reset
+  local source=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --source) source=${2:-} ;;
+      --source=*) source=${1#--source=} ;;
+    esac
+    shift
+  done
+  [ -e "$source" ] || [[ "$source" == *://* ]] && return 0  # a clip, a picture or a stream, not the camera
+  if command -v systemctl >/dev/null && systemctl is-active --quiet $UNIT; then
+    echo "the counting service is using the camera: stop it first with  bash run.sh service stop"
+    echo "(start it again afterwards with  bash run.sh service start)"
+    exit 1
+  fi
+}
 
 if [ "$STEP" = send ]; then
   exec bash send_to_pi.sh "$@"
@@ -59,7 +77,6 @@ if [ "$STEP" = setup ]; then
 fi
 
 if [ "$STEP" = service ]; then
-  UNIT=yolo-pi-counter
   ACTION=${1:-status}
   [ $# -gt 0 ] && shift
   case "$ACTION" in
@@ -131,9 +148,9 @@ case "$STEP" in
     run 0_export_ncnn 0_export_ncnn.py --models "${names[@]}" ;;
   0) run 0_export_ncnn 0_export_ncnn.py "$@" ;;
   1) run "1_eval_$(hostname -s)" 1_eval.py "$@" ;;
-  2) python 2_record_clip.py "$@" ;;
-  3) python 3_camera.py "$@" ;;
-  4|zones) python 4_set_zones.py "$@" ;;
+  2) camera_free "$@"; python 2_record_clip.py "$@" ;;
+  3) camera_free "$@"; python 3_camera.py "$@" ;;
+  4|zones) camera_free "$@"; python 4_set_zones.py "$@" ;;
   count)
     [ -f zones.json ] || { echo "no zones.json yet: draw the line / zone first with  bash run.sh 4"; exit 1; }
     exec python 3_camera.py --zones zones.json --mqtt localhost --no-show --no-frame-log --every 0 "$@" ;;

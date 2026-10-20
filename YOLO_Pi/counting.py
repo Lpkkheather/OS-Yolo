@@ -11,8 +11,11 @@ so someone standing on the line and swaying is not counted again and again.
 
 Every minute one row goes to data/<date>.csv (live camera) or data/test_<clip>.csv (clip), and with MQTT the same
 record is published (retained) to pi5/people/count. The service also reports online / offline on pi5/status/people.
+Between the minutes, every second, pi5/people/live gets the counts right now (people in the zone, today's totals so
+far) so the dashboard does not wait up to a minute; these are not stored (the minutes in the CSV are the history).
 """
 
+from collections import deque
 import csv
 import json
 from datetime import datetime, timedelta
@@ -32,7 +35,10 @@ LINE_BGR, ZONE_BGR, IN_BGR = (0, 215, 255), (255, 200, 0), (80, 200, 80)
 FORGET_FRAMES = 300  # a track not seen for this many frames is forgotten (ByteTrack drops it after 30 anyway)
 VISITOR_SECONDS = 1.0  # time inside the zone before a person counts as a visitor: filters false boxes and the
 #                        short-lived ids of the tracker ("flicker"), same rule as unique_people_stable in 3_camera.py
-MQTT_TOPIC, STATUS_TOPIC = "pi5/people/count", "pi5/status/people"
+MQTT_TOPIC, STATUS_TOPIC, LIVE_TOPIC = "pi5/people/count", "pi5/status/people", "pi5/people/live"
+LIVE_SECONDS = 1.0  # how often the counts right now go to LIVE_TOPIC
+LIVE_WINDOW = 2.0  # "people in the zone now" = median of the frames of the last N seconds: one missed or false box
+#                     does not make the number jump, a real change shows after ~1 s
 
 
 def parse_points(text: str, name: str) -> list[list[float]]:
@@ -178,6 +184,7 @@ class MinuteLog:
         self.bucket = self.day = None
         self.totals = {}
         self.acc = None
+        self.recent = deque()  # (time, people in the zone) of the last LIVE_WINDOW seconds of frames
         DATA.mkdir(exist_ok=True)
         if clip is not None:
             (DATA / f"test_{clip}.csv").unlink(missing_ok=True)
@@ -203,7 +210,23 @@ class MinuteLog:
         a["visitors"] += counts["visitors"]
         a["zone_sum"] += counts["in_zone"]
         a["zone_max"] = max(a["zone_max"], counts["in_zone"])
+        self.recent.append((t.timestamp(), counts["in_zone"]))
+        while self.recent[0][0] < t.timestamp() - LIVE_WINDOW:
+            self.recent.popleft()
         return row
+
+    def live(self, frame_no: int) -> dict:
+        """The counts right now (call after add): people in the zone now (median of the last LIVE_WINDOW seconds),
+        today's totals including the minute that is not finished yet. Same names as the minute rows."""
+        if self.day != self.bucket.date():  # before the first row of the day: continue from today's file
+            self.day = self.bucket.date()
+            self.totals = self._saved_totals(self.day)
+        a, line = self.acc, self.has_line
+        in_zone = sorted(n for _, n in self.recent)[len(self.recent) // 2]
+        return {"time": self.now(frame_no).isoformat(timespec="seconds"), "camera": self.camera, "in_zone": in_zone,
+                "in_today": self.totals["in"] + a["in"] if line else None,
+                "out_today": self.totals["out"] + a["out"] if line else None,
+                "visitors_today": self.totals["visitors"] + a["visitors"]}
 
     def finish(self, frame_no: int) -> dict | None:
         """Write the last (partial) minute when the program stops."""
@@ -273,7 +296,8 @@ class MqttOut:
         self.client.reconnect_delay_set(min_delay=1, max_delay=30)
         self.client.connect_async(broker, port, keepalive=30)
         self.client.loop_start()
-        print(f"MQTT: {self.where}  topic {topic} (retained, every minute) + {STATUS_TOPIC} online/offline")
+        print(f"MQTT: {self.where}  topic {topic} (retained, every minute) + {LIVE_TOPIC} (every {LIVE_SECONDS:g} s)"
+              f" + {STATUS_TOPIC} online/offline")
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code.is_failure:
@@ -291,6 +315,11 @@ class MqttOut:
         if info.rc != 0 and not self.warned:
             print(f"MQTT: no broker at {self.where} yet - minutes wait in a queue (and are in data/*.csv)", flush=True)
             self.warned = True
+
+    def publish_live(self, now: dict) -> None:
+        """The counts right now (MinuteLog.live) to LIVE_TOPIC: QoS 0, not retained, not queued - an old "now" is
+        useless, and a new dashboard gets one within a second anyway."""
+        self.client.publish(LIVE_TOPIC, json.dumps(now, ensure_ascii=False), qos=0, retain=False)
 
     def close(self) -> None:
         """Say "offline" ourselves (the Last Will only fires when the connection drops unexpectedly)."""

@@ -1,7 +1,8 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSseToday, TodayData, StatusResponse } from "@/lib/hooks/useSseToday";
+import { TodayData, StatusResponse } from "@/lib/hooks/useSseToday";
+import { useSocketSync } from "@/lib/hooks/useSocketSync";
 import { StatusBar } from "@/lib/components/StatusBar";
 import { PeopleStats } from "@/lib/components/PeopleStats";
 import { HourlyChart } from "@/lib/components/HourlyChart";
@@ -35,9 +36,10 @@ export function Dashboard() {
   const [serverStatus, setServerStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const { data: sseData } = useSseToday();
-  const today = sseData ?? serverToday;
-  const status = serverStatus;
+  // ข้อมูลทั้งหน้ามาจาก Socket.IO "sync" ทุก 3 วินาที; fetch ตอนเปิดหน้าเป็น fallback ถ้า socket ต่อไม่ได้
+  const { data: sync } = useSocketSync();
+  const today = sync?.today ?? serverToday;
+  const status = sync?.status ?? serverStatus;
 
   useEffect(() => {
     let mounted = true;
@@ -84,10 +86,10 @@ export function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="lg:col-span-1">
-          <LiveEventLog />
+          <LiveEventLog data={sync?.events ?? null} />
         </div>
         <Suspense>
-          <CompareCard />
+          <CompareCard data={sync?.compare ?? null} />
         </Suspense>
       </div>
 

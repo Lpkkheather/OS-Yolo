@@ -86,8 +86,10 @@ def has_picamera() -> bool:
         return False
 
 
-def picamera_frames(width: int, height: int):
-    """Frames from the Raspberry Pi camera. 'RGB888' is stored as B,G,R — the order OpenCV / Ultralytics expect."""
+def picamera_frames(width: int, height: int, timeout: float = 10.0):
+    """Frames from the Raspberry Pi camera. 'RGB888' is stored as B,G,R — the order OpenCV / Ultralytics expect.
+    No frame for `timeout` s (e.g. the USB camera reset itself) -> RuntimeError instead of waiting forever, so the
+    counting service stops and systemd starts it again."""
     from picamera2 import Picamera2
 
     cam = Picamera2()
@@ -95,10 +97,14 @@ def picamera_frames(width: int, height: int):
     cam.start()
     try:
         while True:
-            yield cam.capture_array()
+            try:
+                yield cam.capture_array(wait=timeout)
+            except TimeoutError:
+                raise RuntimeError(f"no frame from the camera for {timeout:.0f} s (unplugged or reset?)") from None
     finally:
-        cam.stop()
-        cam.close()  # release the camera for the next program
+        # close() stops the camera too and releases it for the next program. Not stop() first: after a reset the
+        # camera thread is dead and stop() would wait for it forever.
+        cam.close()
 
 
 def default_source() -> str:

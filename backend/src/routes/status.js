@@ -8,17 +8,22 @@ import { getMqttState } from "../mqtt.js";
 
 const router = Router();
 
+/** สถานะตอนนี้ — ใช้ทั้ง GET /api/status และ socket sync */
+export function buildStatus() {
+  const rows = readDayCsv(getTodayStr());
+  const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
+  const { status: mqttStatus } = getMqttState();
+
+  return {
+    mqttStatus,
+    lastDataTime: lastRow?.time ?? null,
+    lastRow,
+  };
+}
+
 router.get("/", (req, res) => {
   try {
-    const rows = readDayCsv(getTodayStr());
-    const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
-    const { status: mqttStatus } = getMqttState();
-
-    res.json({
-      mqttStatus,
-      lastDataTime: lastRow?.time ?? null,
-      lastRow,
-    });
+    res.json(buildStatus());
   } catch (err) {
     console.error("[status]", err);
     res.status(500).json({ error: err.message });

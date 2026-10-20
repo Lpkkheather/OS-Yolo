@@ -1,9 +1,12 @@
 // ============================================================
 // index.js — Express server สำหรับ YOLO Dashboard
 // ============================================================
+// ต้องอยู่บรรทัดแรก: sse.js, csvReader.js, routes/* อ่าน process.env ตอนโหลด module
+// (dotenv.config() หลัง import ทำงานช้าไป → ค่าใน .env เช่น YOLO_DATA_DIR ถูกข้าม)
+import "dotenv/config";
+import { createServer } from "http";
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import todayRouter from "./routes/today.js";
@@ -14,12 +17,12 @@ import historyRouter from "./routes/history.js";
 import zonesRouter from "./routes/zones.js";
 import { startMqtt } from "./mqtt.js";
 import { startSse } from "./sse.js";
-
-dotenv.config();
+import { startSocket } from "./socket.js";
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:3000";
+const SYNC_SECONDS = Number(process.env.SOCKET_SYNC_SECONDS ?? 3);
 
 app.use(cors({ origin: FRONTEND_URL }));
 app.use(express.json());
@@ -66,9 +69,14 @@ if (process.env.MQTT_BROKER_URL) {
   console.log("[Server] MQTT_BROKER_URL ไม่ได้ตั้งค่า — ข้าม MQTT");
 }
 
-app.listen(PORT, () => {
+// Socket.IO ใช้ http server เดียวกับ Express (พอร์ตเดียวกัน)
+const httpServer = createServer(app);
+startSocket(httpServer, FRONTEND_URL, SYNC_SECONDS);
+
+httpServer.listen(PORT, () => {
   console.log(`[Server] รันที่ http://localhost:${PORT}`);
   console.log(`[Server] CORS: ${FRONTEND_URL}`);
+  console.log(`[Server] Socket.IO: ws://localhost:${PORT} (event "sync" ทุก ${SYNC_SECONDS} วินาที)`);
   console.log(`[Server] SSE endpoint: http://localhost:${PORT}/api/stream/today`);
   console.log(`[Server] Swagger UI: http://localhost:${PORT}/api-docs`);
 });
