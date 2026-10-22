@@ -5,7 +5,9 @@
 //   status  = GET /api/status, events = GET /api/events (วันนี้), compare = GET /api/compare
 // ส่งทันทีตอน client ต่อเข้ามา แล้วส่งซ้ำทุกรอบ (เฉพาะตอนมี client)
 // event "live": { time, in_zone, detection } — ส่งทันทีทุกครั้งที่ Pi ส่งค่าสด (~ทุก 1 วินาที) ให้ "คนในห้องตอนนี้" ไม่ต้องรอรอบ sync
-//   detection = { people, conf, fps, model }: คนที่โมเดลเห็นในภาพตอนนี้ ความมั่นใจเฉลี่ย ความเร็ว ชื่อโมเดล
+//   detection = { people, conf, fps, model, mode, door }: คนที่โมเดลเห็นในภาพตอนนี้ ความมั่นใจเฉลี่ย ความเร็ว ชื่อโมเดล
+//     mode = วิธีนับเข้า/ออก: "line" (เส้นที่ตั้งบน dashboard) / "room" (ยังไม่ได้ตั้งเส้น: เข้า/ออก = "—")
+//     door = { box: [x1, y1, x2, y2] 0-1, conf } ประตูที่ AI หาเจอ — แค่เสนอเป็นเส้นเริ่มต้นในหน้า "ตั้งค่าการนับ"
 // event "frame": Buffer JPEG — ภาพที่โมเดลวาดกรอบแล้ว (~5 ภาพ/วินาที, MQTT pi5/people/frame) + ภาพล่าสุดตอน client ต่อเข้ามา
 //   ส่งแบบ volatile: client ที่เน็ตช้ารับไม่ทัน = ทิ้งภาพนั้น ไม่เข้าคิว (ไม่งั้นภาพเก่าสะสม หน่วงขึ้นเรื่อยๆ)
 //
@@ -32,6 +34,8 @@ function detectionOf(live) {
     conf: live.conf ?? null,
     fps: live.fps ?? null,
     model: live.model ?? null,
+    mode: live.mode ?? null,
+    door: live.door ?? null,
   };
 }
 

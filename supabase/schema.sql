@@ -49,3 +49,15 @@ from public.minute_counts
 group by 1, 2;
 
 revoke all on public.minute_days from anon, authenticated;
+
+-- การตั้งค่าการนับของกล้องแต่ละตัว: เส้นเข้า/ออก + โซน ที่วาดบน dashboard (ปุ่ม "ตั้งค่าการนับ")
+-- เขียนโดย: dashboard (app/stats/zones, secret key บน Vercel)  อ่านโดย: YOLO_Pi ทุก 30 วินาที (ใช้ทันทีไม่ต้องรีสตาร์ท)
+-- zones = รูปแบบเดียวกับ YOLO_Pi/zones.json: {"line": [[x,y],[x,y]] | null, "zone": [[x,y],...] | null, "anchor": ...}
+create table if not exists public.camera_settings (
+  camera     text primary key,
+  zones      jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.camera_settings enable row level security;
+revoke all on public.camera_settings from anon, authenticated;

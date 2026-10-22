@@ -31,6 +31,7 @@ Frames are only displayed; video is saved only with --save-video (people must ag
 
 import argparse
 import csv
+import json
 import signal
 import time
 from collections import Counter, deque
@@ -42,8 +43,10 @@ from ultralytics import YOLO
 
 from common import (METRICS, MODEL_NAMES, PERSON, RESULTS, ROOT, WEBCAM_HINT, PictureWatch, cpu_temp,
                     default_source, host, load_env, picamera_frames, pick_model, write_csv)
-from counting import (FRAME_SECONDS, LINE_BGR, LIVE_SECONDS, ZONES_FILE, AreaCounter, MinuteLog, MqttOut,
-                      SupabaseOut, anchor_points, draw_counts, draw_zones, frame_jpeg, make_zones)
+from counting import (COUNT_CONF, FRAME_SECONDS, LINE_BGR, LIVE_SECONDS, ZONES_FILE, AreaCounter, MinuteLog,
+                      MqttOut, SettingsSync, SupabaseOut, anchor_points, draw_counts, draw_zones, frame_jpeg,
+                      make_zones, settings_zones)
+from door import DoorFinder
 
 GOLD_BGR = (76, 168, 201)
 TRACK_CONF = 0.1  # Ultralytics' tracking default: low-score boxes keep tracks of partly hidden people alive
@@ -231,7 +234,12 @@ def main():
     ap.add_argument("--no-frame-log", action="store_true", help="no frames.csv (for the 24/7 service)")
     count = ap.add_argument_group("counting (line / zone)")
     count.add_argument("--zones", nargs="?", const=str(ZONES_FILE), default=None,
-                       help="count with zones.json from 4_set_zones.py (or another file)")
+                       help="count with zones.json from 4_set_zones.py (or another file); auto = nothing drawn yet: the "
+                            "whole picture is the room, IN / OUT wait for a line set on the dashboard")
+    count.add_argument("--door", choices=("on", "off"), default="on",
+                       help="with no line: look for the door (door.py) to offer it on the dashboard as a starting line")
+    count.add_argument("--count-conf", type=float, default=COUNT_CONF,
+                       help="lowest box score counted as a person (the tracker still follows weaker boxes)")
     count.add_argument("--line", help="x1,y1,x2,y2 as fractions 0-1 of the frame (overrides zones.json; none = off)")
     count.add_argument("--zone", help="x1,y1,x2,y2,x3,y3,... fractions 0-1 (overrides zones.json; none = off)")
     count.add_argument("--anchor", choices=("bottom", "center"), help="point of the person box that is counted")
@@ -260,11 +268,13 @@ def main():
 
     zones = None
     if args.zones or args.line or args.zone:
-        if args.zones and not Path(args.zones).is_file():
-            raise SystemExit(f"{args.zones} not found - draw the line / zone first: bash run.sh 4")
-        zones = make_zones(args.zones, args.line, args.zone, args.anchor, args.camera)
-        print(f"counting: line {'on' if zones.get('line') else 'off'}, "
-              f"zone {'on' if zones.get('zone') else 'off (= whole picture)'}, anchor {zones['anchor']}, "
+        auto = args.zones == "auto"
+        if args.zones and not auto and not Path(args.zones).is_file():
+            raise SystemExit(f"{args.zones} not found - draw the line / zone first (bash run.sh 4) or use --zones auto")
+        zones = make_zones(None if auto else args.zones, args.line, args.zone, args.anchor, args.camera)
+        door_search = args.door == "on"  # a starting line to offer on the dashboard while no line is set
+        print(f"counting: line {'on' if zones.get('line') else 'off (IN / OUT wait for a line set on the dashboard)'}"
+              + f", zone {'on' if zones.get('zone') else 'off (= whole picture)'}, anchor {zones['anchor']}, "
               f"camera {zones['camera']}")
     mqtt = None
     if args.mqtt and args.mqtt.lower() not in ("off", "no", "none"):
@@ -283,6 +293,8 @@ def main():
         else:
             cloud = SupabaseOut(env["SUPABASE_URL"], env["SUPABASE_SECRET_KEY"])
 
+    door_finder = (DoorFinder(lambda door: zones.__setitem__("door", door), wanted=lambda: not zones.get("line"))
+                   if zones and door_search else None)
     model = YOLO(weights, task="detect")
     track = dict(classes=[PERSON], conf=args.conf, imgsz=args.imgsz, tracker="bytetrack.yaml", verbose=False)
     if source == "picamera":
@@ -293,6 +305,19 @@ def main():
 
     stats = RunStats()
     counter = AreaCounter(zones) if zones else None
+    if counter and env.get("SUPABASE_URL") and env.get("SUPABASE_SECRET_KEY") and not Path(source).is_file():
+        def use_settings(saved: dict) -> None:
+            """Line / zone drawn on the dashboard: used from the next frame, kept in zones.json for a restart offline."""
+            new = settings_zones(saved)
+            zones["line"], zones["zone"] = new["line"], new["zone"]
+            if new["anchor"]:
+                zones["anchor"] = new["anchor"]
+            counter.people.clear()  # sides of the old line mean nothing for the new one
+            ZONES_FILE.write_text(json.dumps({k: zones.get(k) for k in ("camera", "anchor", "band", "line", "zone")},
+                                             indent=2))
+            print(f"settings from the dashboard: line {'on' if zones['line'] else 'off (IN / OUT not counted)'}, "
+                  f"zone {'on' if zones['zone'] else 'off (= whole picture)'}", flush=True)
+        SettingsSync(env["SUPABASE_URL"], env["SUPABASE_SECRET_KEY"], zones["camera"], use_settings)
     model_name = weights.name.replace("_ncnn_model", "")
     minutes = MinuteLog(zones, model_name, source_name if Path(source).is_file() else None,
                         clip_fps(source), mqtt, cloud) if zones else None
@@ -315,12 +340,16 @@ def main():
             # only tracked boxes are people: when ByteTrack has no track yet, Ultralytics returns the raw boxes
             # (score >= 0.1, not confirmed) without ids -> they are not counted
             tracked = r.boxes is not None and r.boxes.id is not None
+            if tracked:  # people = boxes scored >= --count-conf (weaker ones keep the tracks alive, nothing more)
+                r = r[r.boxes.conf >= args.count_conf]
             ids = r.boxes.id.int().tolist() if tracked else []
             conf = r.boxes.conf.tolist() if tracked else []
             xyxy = r.boxes.xyxy.cpu().numpy() if tracked else np.zeros((0, 4))
             now = time.time()
             if watch:
                 watch.check(r.orig_img, now)
+            if door_finder:
+                door_finder.offer(r.orig_img)
             temp = cpu_temp() if stats.frames % 30 == 0 else ""
             ms = r.speed["preprocess"] + r.speed["inference"] + r.speed["postprocess"]
             counts = None
@@ -339,7 +368,10 @@ def main():
                     fps = (stats.frames - live_frames) / (now - last_live) if last_live else stats.frames / (now - start)
                     mqtt.publish_live(minutes.live(stats.frames) | {
                         "people": len(ids), "conf": round(sum(conf) / len(conf), 2) if conf else None,
-                        "fps": round(fps, 1), "model": model_name})
+                        "fps": round(fps, 1), "model": model_name,
+                        # line = IN / OUT at the line set on the dashboard, room = no line yet (in / out "-")
+                        "mode": "line" if zones.get("line") else "room",
+                        "door": zones.get("door")})  # found by door.py: offered as a starting line
                     last_live, live_frames = now, stats.frames
             stats.add(ids, conf, ms, temp, counts)
             if frame_log:
@@ -362,6 +394,9 @@ def main():
             frame_due = send_frames and now - last_frame >= FRAME_SECONDS
             if not args.no_show or args.save_video or frame_due:
                 picture = r.plot(img=draw_zones(r.orig_img.copy(), zones) if zones else None)
+                if frame_due:  # the dashboard gets the clean picture: boxes + line / zone, its own numbers
+                    mqtt.publish_frame(frame_jpeg(picture))
+                    last_frame = now
                 text = f"people: {len(ids)}   unique: {stats.unique_so_far()}"
                 (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)
                 cv2.rectangle(picture, (4, 6), (tw + 18, th + 24), (62, 77, 27), -1)
@@ -372,9 +407,6 @@ def main():
                         cv2.circle(picture, (int(x), int(y)), 6, LINE_BGR, -1)
                     labels = {"IN": stats.counts["in"], "OUT": stats.counts["out"]} if zones.get("line") else {}
                     draw_counts(picture, labels | {"zone": counts["in_zone"], "visitors": stats.counts["visitors"]})
-                if frame_due:
-                    mqtt.publish_frame(frame_jpeg(picture))
-                    last_frame = now
                 if args.save_video:
                     if writer is None:
                         out = RESULTS / host() / "camera" / f"{run_name}.mp4"

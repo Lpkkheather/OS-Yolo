@@ -9,6 +9,13 @@ angle); "center" = the middle of the box (camera looking straight down).
 band = a strip of +-2% of the frame height around the line: a person must leave it on the other side to be counted,
 so someone standing on the line and swaying is not counted again and again.
 
+The line and zone are set on the dashboard (button "ตั้งค่าการนับ" -> Supabase camera_settings, read every
+SETTINGS_SECONDS by SettingsSync; a copy is kept in zones.json). Nothing set = the whole picture is the room and
+IN / OUT are not counted: in / out are None (the dashboard shows "-"), never a guess. The door that door.py finds by
+itself is only offered on the dashboard as a starting line (zones["door"], sent with the live counts).
+Only boxes with a score >= COUNT_CONF are people: the tracker also follows weaker boxes (0.1+) to keep half-hidden
+people, but those also stick to chairs and bags.
+
 Every minute one row goes to data/<date>.csv (live camera) or data/test_<clip>.csv (clip), and with MQTT the same
 record is published (retained) to pi5/people/count. The service also reports online / offline on pi5/status/people.
 Between the minutes, every second, pi5/people/live gets the counts right now (people in the zone, today's totals so
@@ -28,6 +35,7 @@ import queue
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import cv2
@@ -40,6 +48,7 @@ DATA = ROOT / "data"
 FIELDS = ["time", "seconds", "camera", "in", "out", "in_zone_avg", "in_zone_max", "visitors",
           "in_today", "out_today", "visitors_today", "fps", "cpu_temp_c", "model"]
 LINE_BGR, ZONE_BGR, IN_BGR = (0, 215, 255), (255, 200, 0), (80, 200, 80)
+COUNT_CONF = 0.35  # boxes below this score are not counted as people (false boxes on chairs scored 0.22-0.28)
 FORGET_FRAMES = 300  # a track not seen for this many frames is forgotten (ByteTrack drops it after 30 anyway)
 VISITOR_SECONDS = 1.0  # time inside the zone before a person counts as a visitor: filters false boxes and the
 #                        short-lived ids of the tracker ("flicker"), same rule as unique_people_stable in 3_camera.py
@@ -50,8 +59,9 @@ LIVE_WINDOW = 2.0  # "people in the zone now" = median of the frames of the last
 FRAME_TOPIC = "pi5/people/frame"
 # the picture for the dashboard: 5 per second, 480 px wide (~10 KB each: about 50 KB/s, also through Tailscale Funnel)
 FRAME_SECONDS, FRAME_WIDTH, FRAME_QUALITY = 0.2, 480, 60
-#   JPEG (~30-60 KB); drawing + encoding it once a second costs the counting almost nothing
 SUPABASE_TABLE = "minute_counts"
+SETTINGS_TABLE = "camera_settings"  # line / zone drawn on the dashboard (button "ตั้งค่าการนับ")
+SETTINGS_SECONDS = 30.0  # how often the counter looks for new settings from the dashboard
 SUPABASE_RETRY = 60.0  # seconds between tries while Supabase cannot be reached
 SUPABASE_KEEP = 1440  # minutes kept in memory while offline (1 day); older ones are still in data/*.csv
 INT_FIELDS = ("seconds", "in", "out", "in_zone_max", "visitors", "in_today", "out_today", "visitors_today")
@@ -195,7 +205,7 @@ class MinuteLog:
     """
 
     def __init__(self, zones: dict, model: str, clip: str | None, video_fps: float, mqtt=None, cloud=None):
-        self.has_line = bool(zones.get("line"))
+        self.zones = zones  # the line can be set on the dashboard after the start: in / out are counted from then on
         self.camera, self.model, self.clip, self.video_fps, self.mqtt = zones["camera"], model, clip, video_fps, mqtt
         self.cloud = cloud  # SupabaseOut (live camera only)
         self.start = datetime.now().astimezone().replace(second=0, microsecond=0)
@@ -206,6 +216,11 @@ class MinuteLog:
         DATA.mkdir(exist_ok=True)
         if clip is not None:
             (DATA / f"test_{clip}.csv").unlink(missing_ok=True)
+
+    @property
+    def has_line(self) -> bool:
+        """IN / OUT are counted (a line is set); False = in / out are None."""
+        return bool(self.zones.get("line"))
 
     def now(self, frame_no: int) -> datetime:
         if self.clip is not None:  # video time
@@ -393,6 +408,55 @@ def post_rows(url: str, key: str, rows: list[dict], timeout: float = 15) -> None
                                      data=json.dumps(rows).encode(), headers=headers, method="POST")
     with urllib.request.urlopen(request, timeout=timeout) as response:
         response.read()
+
+
+def get_settings(url: str, key: str, camera: str, timeout: float = 15) -> dict | None:
+    """The row of camera_settings for this camera ({"zones": ..., "updated_at": ...}), None = nothing saved yet."""
+    headers = {"apikey": key}
+    if key.startswith("eyJ"):
+        headers["Authorization"] = f"Bearer {key}"
+    query = urllib.parse.urlencode({"select": "zones,updated_at", "camera": f"eq.{camera}"})
+    request = urllib.request.Request(f"{url.rstrip('/')}/rest/v1/{SETTINGS_TABLE}?{query}", headers=headers)
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        rows = json.loads(response.read())
+    return rows[0] if rows else None
+
+
+def settings_zones(new: dict) -> dict:
+    """Settings saved on the dashboard -> {"line", "zone", "anchor"}, checked like make_zones (a bad part -> None)."""
+    def points(value, least):
+        ok = isinstance(value, list) and len(value) >= least and all(
+            isinstance(p, list) and len(p) == 2 and all(isinstance(c, (int, float)) and 0 <= c <= 1 for c in p)
+            for p in value)
+        return [[float(x), float(y)] for x, y in value] if ok else None
+    line = points(new.get("line"), 2)
+    return {"line": line if line and len(line) == 2 else None, "zone": points(new.get("zone"), 3),
+            "anchor": new.get("anchor") if new.get("anchor") in ("bottom", "center") else None}
+
+
+class SettingsSync:
+    """Looks for the line / zone drawn on the dashboard (Supabase camera_settings) every SETTINGS_SECONDS and calls
+    on_change(zones) when they changed: the counting uses them at once, no restart. Runs in its own thread."""
+
+    def __init__(self, url: str, key: str, camera: str, on_change):
+        self.url, self.key, self.camera, self.on_change = url, key, camera, on_change
+        self.updated = None
+        threading.Thread(target=self._run, name="settings", daemon=True).start()
+
+    def _run(self) -> None:
+        failing = False
+        while True:
+            try:
+                row = get_settings(self.url, self.key, self.camera)
+                failing = False
+                if row and row["updated_at"] != self.updated:
+                    self.updated = row["updated_at"]
+                    self.on_change(row["zones"])
+            except (OSError, ValueError, KeyError) as e:
+                if not failing:
+                    print(f"settings: cannot read the dashboard settings ({e}) - using the last ones", flush=True)
+                    failing = True
+            time.sleep(SETTINGS_SECONDS)
 
 
 class SupabaseOut:

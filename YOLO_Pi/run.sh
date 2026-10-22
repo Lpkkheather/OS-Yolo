@@ -15,6 +15,8 @@
 #   bash run.sh 3 --zones      counting with a window: line, zone and counters on the picture
 #   bash run.sh 3 --source clips/site.mp4 --zones --true-in 5 --true-out 3    check the counting on a clip
 #   bash run.sh count          count for real: no window, one row per minute -> data/<date>.csv + MQTT
+#                              line / zone: set on the dashboard ("ตั้งค่าการนับ", read every 30 s, copied to zones.json);
+#                              nothing set = the whole picture is the room and IN / OUT are not counted ("-")
 #                              pi5/people/count (broker on this Pi; --mqtt <ip> = other broker, --mqtt off = none)
 #                              + Supabase table minute_counts when .env has SUPABASE_URL + SUPABASE_SECRET_KEY
 #   bash run.sh upload         send data/<date>.csv to Supabase (days before Supabase, minutes missed while offline)
@@ -90,7 +92,6 @@ if [ "$STEP" = service ]; then
     install)
       [ "$(uname)" = Linux ] || { echo "the service is for the Raspberry Pi (Linux + systemd)"; exit 1; }
       [ "$(id -u)" != 0 ] || { echo "run it without sudo (it asks for sudo itself)"; exit 1; }
-      [ -f zones.json ] || { echo "no zones.json yet: draw the line / zone first with  bash run.sh 4"; exit 1; }
       sudo tee /etc/systemd/system/$UNIT.service >/dev/null <<EOF
 [Unit]
 Description=YOLO_Pi people counter -> data/*.csv + MQTT pi5/people/count
@@ -212,7 +213,7 @@ case "$STEP" in
   3) camera_free "$@"; python 3_camera.py "$@" ;;
   4|zones) camera_free "$@"; python 4_set_zones.py "$@" ;;
   count)
-    [ -f zones.json ] || { echo "no zones.json yet: draw the line / zone first with  bash run.sh 4"; exit 1; }
-    exec python 3_camera.py --zones zones.json --mqtt localhost --no-show --no-frame-log --every 0 "$@" ;;
+    if [ -f zones.json ]; then ZONES=zones.json; else ZONES=auto; fi  # auto = whole picture, no line until one is set
+    exec python 3_camera.py --zones "$ZONES" --mqtt localhost --no-show --no-frame-log --every 0 "$@" ;;
   *) echo "usage: bash run.sh [setup|1|2|3|4|count|upload|service|backend|import|send|github|0] [options]"; exit 1 ;;
 esac

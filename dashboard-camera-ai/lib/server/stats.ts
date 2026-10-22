@@ -5,7 +5,7 @@
 // การคำนวณเหมือน backend/src/routes (today, history, compare, events) — แก้ฝั่งหนึ่งให้แก้อีกฝั่งด้วย
 // ============================================================
 import type { MinuteRow, TodayData } from "@/lib/hooks/useSseToday";
-import type { CompareResponse, CompareStat, DayStats, DaySummary, EventItem } from "@/lib/api";
+import type { CompareResponse, CompareStat, CountSettings, DayStats, DaySummary, EventItem } from "@/lib/api";
 
 const SUPABASE_URL = (process.env.SUPABASE_URL ?? "").replace(/\/+$/, "");
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY ?? "";
@@ -95,6 +95,70 @@ async function supabaseGet<T>(table: string, params: URLSearchParams): Promise<T
     throw new Error(`Supabase ${table} → ${res.status}: ${text.slice(0, 200)}`);
   }
   return res.json() as Promise<T>;
+}
+
+/** POST (upsert) ไป Supabase REST — แถวที่ key ซ้ำ (on_conflict) = แก้แถวเดิม */
+async function supabaseUpsert(table: string, onConflict: string, row: Record<string, unknown>): Promise<void> {
+  const headers: Record<string, string> = {
+    apikey: SUPABASE_KEY,
+    "Content-Type": "application/json",
+    Prefer: "resolution=merge-duplicates,return=minimal",
+  };
+  if (SUPABASE_KEY.startsWith("eyJ")) headers.Authorization = `Bearer ${SUPABASE_KEY}`;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(row),
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase ${table} → ${res.status}: ${text.slice(0, 200)}`);
+  }
+}
+
+// ---------- การตั้งค่าการนับที่วาดบน dashboard (ตาราง camera_settings — Pi อ่านทุก 30 วินาที) ----------
+
+const SETTINGS_CAMERA = CAMERA || "cam1"; // Pi ตัวเดียว: ชื่อกล้องเริ่มต้นใน YOLO_Pi คือ cam1
+
+/** จุด 0-1 ของภาพ อย่างน้อย least จุด — ผิดรูปแบบ = null (เหมือน settings_zones ใน YOLO_Pi/counting.py) */
+function points(value: unknown, least: number): number[][] | null {
+  const ok =
+    Array.isArray(value) &&
+    value.length >= least &&
+    value.every(
+      (p) => Array.isArray(p) && p.length === 2 && p.every((c) => typeof c === "number" && c >= 0 && c <= 1),
+    );
+  return ok ? (value as number[][]) : null;
+}
+
+/** ค่าที่ส่งมาจากหน้าเว็บ → zones ที่ Pi ใช้ได้แน่นอน (null = ไม่ใช้เส้น / ทั้งภาพ) */
+export function cleanZones(input: unknown): CountSettings {
+  const z = (input ?? {}) as Record<string, unknown>;
+  const line = points(z.line, 2);
+  return {
+    line: line && line.length === 2 ? line : null,
+    zone: points(z.zone, 3),
+    anchor: z.anchor === "center" ? "center" : "bottom",
+  };
+}
+
+export async function getCountSettings(): Promise<{ zones: CountSettings | null; updatedAt: string | null }> {
+  const params = new URLSearchParams([
+    ["select", "zones,updated_at"],
+    ["camera", `eq.${SETTINGS_CAMERA}`],
+  ]);
+  const rows = await supabaseGet<{ zones: CountSettings; updated_at: string }[]>("camera_settings", params);
+  return { zones: rows[0]?.zones ?? null, updatedAt: rows[0]?.updated_at ?? null };
+}
+
+export async function saveCountSettings(zones: CountSettings): Promise<void> {
+  await supabaseUpsert("camera_settings", "camera", {
+    camera: SETTINGS_CAMERA,
+    zones,
+    updated_at: new Date().toISOString(),
+  });
 }
 
 /** แถวของวัน from..to (เวลาไทย รวมทั้งสองวัน) เรียงตามเวลา → วันที่ -> MinuteRow[] (วันที่ไม่มีข้อมูล = []) */

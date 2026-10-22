@@ -17,16 +17,19 @@ export function PeopleStats({ today, archived = false }: PeopleStatsProps) {
     );
   }
 
+  // ตัวนับยังไม่เห็นประตู → ยังไม่ได้นับเข้า/ออก: "—" (ไม่ใช่ 0 ที่ดูเหมือนไม่มีใครเข้า)
+  const noDoor = !archived && today.detection?.mode === "room";
+
   const cards = [
     {
       label: archived ? "เข้าทั้งวัน" : "เข้าวันนี้",
-      value: today.inToday ?? 0,
+      value: noDoor ? "—" : today.inToday ?? 0,
       sub: "ยอดสะสม",
       color: "text-blue-400",
     },
     {
       label: archived ? "ออกทั้งวัน" : "ออกวันนี้",
-      value: today.outToday ?? 0,
+      value: noDoor ? "—" : today.outToday ?? 0,
       sub: "ยอดสะสม",
       color: "text-purple-400",
     },

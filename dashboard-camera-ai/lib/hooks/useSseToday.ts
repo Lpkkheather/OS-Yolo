@@ -48,6 +48,10 @@ export interface Detection {
   fps: number | null;
   /** เช่น yolo26n_640 */
   model: string | null;
+  /** วิธีนับเข้า/ออก: line = เส้นที่ตั้งบน dashboard, room = ยังไม่ได้ตั้งเส้น (เข้า/ออก = "—") */
+  mode?: "line" | "room" | null;
+  /** ประตูที่ AI หาเจอ (กรอบ 0-1 ของภาพ + ความมั่นใจ) — แค่เสนอเป็นเส้นเริ่มต้นในหน้า "ตั้งค่าการนับ" ไม่ได้ใช้นับ */
+  door?: { box: number[]; conf: number } | null;
 }
 
 export interface StatusResponse {

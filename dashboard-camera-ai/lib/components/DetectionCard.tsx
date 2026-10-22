@@ -5,8 +5,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SlidersHorizontal } from "lucide-react";
 import type { Detection, MinuteRow } from "@/lib/hooks/useSseToday";
 import type { Frame } from "@/lib/hooks/useSocketSync";
+import { ZoneEditor } from "@/lib/components/ZoneEditor";
 
 // ภาพเก่ากว่านี้ = ตัวนับหยุดส่งแล้ว → ป้าย LIVE เปลี่ยนเป็นเวลาของภาพล่าสุด
 const FRAME_MAX_AGE_MS = 5_000;
@@ -20,6 +22,7 @@ interface Props {
 
 export function DetectionCard({ frame, detection, lastRow }: Props) {
   const [now, setNow] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -29,6 +32,15 @@ export function DetectionCard({ frame, detection, lastRow }: Props) {
   const live = frame !== null && (now === null || now - frame.at < FRAME_MAX_AGE_MS);
   const fps = detection?.fps ?? lastRow?.fps ?? null;
   const model = detection?.model ?? lastRow?.model ?? null;
+
+  const noLine = detection?.mode === "room";
+  // วิธีนับเข้า/ออก (ตัวนับรุ่นเก่าไม่ส่ง mode → ไม่แสดง)
+  const countMode =
+    detection?.mode === "line"
+      ? "นับเข้า/ออกที่เส้นที่ตั้งไว้ ✓"
+      : detection?.mode === "room"
+        ? "ยังไม่ได้ตั้งเส้นเข้า/ออก (เข้า/ออก = —)"
+        : null;
 
   const stats = [
     { label: "ตรวจพบในภาพ", value: detection?.people != null ? `${detection.people} คน` : "—" },
@@ -76,6 +88,24 @@ export function DetectionCard({ frame, detection, lastRow }: Props) {
           )}
         </div>
 
+        {/* สถานะการนับเข้า/ออก + ปุ่มตั้งค่า (ยังไม่มีเส้น = ปุ่มสีฟ้าเด่น ชวนให้ตั้ง) */}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#2a2a2a] bg-[#161616] px-3 py-2">
+          <p className={`text-sm ${noLine ? "text-yellow-400" : countMode ? "text-green-400" : "text-gray-400"}`}>
+            {countMode ?? "เส้นเข้า/ออกและโซนห้อง ตั้งได้จากหน้านี้"}
+          </p>
+          <button
+            onClick={() => setEditing(true)}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+              noLine
+                ? "bg-blue-600 text-white hover:bg-blue-500"
+                : "border border-[#3a3a3a] bg-[#242424] text-gray-100 hover:bg-[#2e2e2e]"
+            }`}
+          >
+            <SlidersHorizontal size={16} />
+            {noLine ? "ตั้งเส้นเข้า/ออก" : "ตั้งค่าการนับ"}
+          </button>
+        </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {stats.map((s) => (
             <div key={s.label} className="rounded-lg bg-[#161616] border border-[#2a2a2a] px-3 py-2.5">
@@ -85,6 +115,7 @@ export function DetectionCard({ frame, detection, lastRow }: Props) {
           ))}
         </div>
       </div>
+      {editing && <ZoneEditor frame={frame} detection={detection} onClose={() => setEditing(false)} />}
     </div>
   );
 }

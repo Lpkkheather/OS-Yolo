@@ -129,6 +129,29 @@ async function statsFetch<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** การตั้งค่าการนับที่วาดบน dashboard (รูปแบบเดียวกับ YOLO_Pi/zones.json, จุด = สัดส่วน 0-1 ของภาพ) */
+export interface CountSettings {
+  /** เส้นนับเข้า/ออก 2 จุด — เดินไปทางลูกศร = เข้า · null = ใช้ประตูที่ AI หาเอง */
+  line: number[][] | null;
+  /** โซนห้อง (มุม >= 3 จุด) · null = ทั้งภาพ */
+  zone: number[][] | null;
+  /** จุดของคนที่ใช้นับ: bottom = เท้า, center = กลางตัว */
+  anchor: "bottom" | "center";
+}
+
+export const fetchCountSettings = () =>
+  statsFetch<{ zones: CountSettings | null; updatedAt: string | null }>("/zones");
+
+export async function saveCountSettings(zones: CountSettings): Promise<void> {
+  const res = await fetch("/stats/zones", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ zones }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`stats /zones → ${res.status}`);
+}
+
 export const fetchDays = () => statsFetch<{ days: DaySummary[] }>("/days");
 export const fetchDayStats = (date: string) => statsFetch<DayStats>(`/day/${date}`);
 
