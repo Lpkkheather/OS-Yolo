@@ -13,15 +13,17 @@
 2. [Dashboard ทำอะไรได้บ้าง](#2-dashboard-ทำอะไรได้บ้าง)
 3. [ส่วนประกอบและโครงสร้างโฟลเดอร์](#3-ส่วนประกอบและโครงสร้างโฟลเดอร์)
 4. [Tech Stack](#4-tech-stack)
-5. [การส่งและจัดเก็บข้อมูล](#5-การส่งและจัดเก็บข้อมูล)
-6. [ติดตั้งครั้งแรก](#6-ติดตั้งครั้งแรก)
-7. [การใช้งานประจำวัน](#7-การใช้งานประจำวัน)
-8. [อัปเดตโค้ด](#8-อัปเดตโค้ด)
-9. [คำสั่งที่ใช้บ่อย](#9-คำสั่งที่ใช้บ่อย)
-10. [ผลวัด (Metrics)](#10-ผลวัด-metrics)
-11. [แก้ปัญหาเบื้องต้น](#11-แก้ปัญหาเบื้องต้น)
-12. [ความปลอดภัย](#12-ความปลอดภัย)
-13. [ข้อจำกัด](#13-ข้อจำกัด)
+5. [Library และ Framework](#5-library-และ-framework)
+6. [Workflow ทีละขั้น (รับเข้า / ส่งออก)](#6-workflow-ทีละขั้น-รับเข้า--ส่งออก)
+7. [การส่งและจัดเก็บข้อมูล](#7-การส่งและจัดเก็บข้อมูล)
+8. [ติดตั้งครั้งแรก](#8-ติดตั้งครั้งแรก)
+9. [การใช้งานประจำวัน](#9-การใช้งานประจำวัน)
+10. [อัปเดตโค้ด](#10-อัปเดตโค้ด)
+11. [คำสั่งที่ใช้บ่อย](#11-คำสั่งที่ใช้บ่อย)
+12. [ผลวัด (Metrics)](#12-ผลวัด-metrics)
+13. [แก้ปัญหาเบื้องต้น](#13-แก้ปัญหาเบื้องต้น)
+14. [ความปลอดภัย](#14-ความปลอดภัย)
+15. [ข้อจำกัด](#15-ข้อจำกัด)
 
 ---
 
@@ -113,9 +115,97 @@ OS-Yolo/
 | Frontend | Next.js 16, React 19, Tailwind CSS 4, Recharts, socket.io-client, lucide-react | Dashboard + route handlers ฝั่ง server |
 | Infra | Vercel, Tailscale (VPN + Funnel), systemd, GitHub | deploy เว็บ, ลิงก์ HTTPS ถึงบอร์ด, เปิด service ตอนบูต |
 
-## 5. การส่งและจัดเก็บข้อมูล
+## 5. Library และ Framework
 
-### 5.1 ข้อมูลที่วิ่งในระบบ
+**ตัวนับคนบน Raspberry Pi (Python)** — `YOLO_Pi/requirements.txt`
+
+| Library | เวอร์ชัน | ใช้ทำอะไร |
+|---|---|---|
+| Ultralytics | 8.4.160 | โหลดโมเดล YOLO / YOLOE, ตรวจจับคน, ติดตาม ID (ByteTrack ในตัว), วาดกรอบ |
+| NCNN | 1.0.20260526 | รันโมเดล YOLO ที่แปลงแล้วให้เร็วบน CPU ARM ของ Pi |
+| PyTorch (CPU-only) | ติดตั้งโดย `bash run.sh setup` | ตัวรันของ Ultralytics และ YOLOE (ไม่ลง GPU library เพื่อประหยัดพื้นที่ SD) |
+| lap | 0.5.13 | จับคู่กรอบกับ ID ใน ByteTrack |
+| OpenCV · NumPy | มากับ Ultralytics | อ่านกล้อง, วาดเส้น/โซน, บีบ JPEG · คำนวณพิกัด |
+| paho-mqtt | 2.1.0 | ส่ง MQTT |
+| Python standard library | Python 3 | `urllib` (Supabase REST), `threading` / `queue` (ส่งข้อมูลเบื้องหลัง), `csv`, `json` |
+
+**Backend (Node.js ≥ 20)** — `backend/package.json`
+
+| Library | เวอร์ชัน | ใช้ทำอะไร |
+|---|---|---|
+| Express | ^4.18.2 | REST API `/api/*` |
+| Socket.IO | ^4.8.4 | ส่งข้อมูลสด `sync` / `live` / `frame` |
+| mqtt (MQTT.js) | ^5.3.4 | รับข้อความจากตัวนับ |
+| cors | ^2.8.5 | อนุญาตเฉพาะโดเมนของ Dashboard |
+| dotenv | ^16.4.5 | อ่าน `.env` |
+| csv-parse | ^5.5.6 | อ่าน CSV (โหมดไม่ใช้ Supabase) |
+| swagger-jsdoc · swagger-ui-express | ^6.3.0 · ^5.0.1 | เอกสาร API ที่ `/api-docs` |
+| `fetch` (ในตัว Node.js) | - | เรียก Supabase REST |
+
+**Dashboard** — `dashboard-camera-ai/package.json`
+
+| Library / Framework | เวอร์ชัน | ใช้ทำอะไร |
+|---|---|---|
+| Next.js (App Router, Turbopack) | 16.4.0 | หน้าเว็บ + route handlers ฝั่ง server (`/stats/*`) |
+| React · React DOM | 19.3.0 | UI แบบ component |
+| TypeScript | ^5 | ชนิดข้อมูลของโค้ด |
+| Tailwind CSS (+ @tailwindcss/turbopack, tw-animate-css) | ^4 | หน้าตาและสี |
+| Recharts | ^3.10.1 | กราฟรายชั่วโมง |
+| socket.io-client | ^4.8.4 | รับข้อมูลสดจาก backend |
+| lucide-react | ^1.53.0 | ไอคอน |
+| shadcn · @base-ui/react · class-variance-authority | ^4.21 · ^1.8 · ^0.7 | คอมโพเนนต์พื้นฐาน (Card) |
+| ESLint · eslint-config-next | ^9 · 16.4.0 | ตรวจคุณภาพโค้ด |
+
+**บริการและเครื่องมือ:** Mosquitto (MQTT broker) · Supabase (PostgreSQL + PostgREST) · Tailscale (VPN + Funnel) · Vercel + Vercel CLI · systemd · rsync + SSH (`bash run.sh send`) · Git / GitHub · Ultralytics บน Mac สำหรับเทรน/วัดผล/แปลง NCNN (ชุดข้อมูล COCO + MOT17)
+
+## 6. Workflow ทีละขั้น (รับเข้า / ส่งออก)
+
+### 6.1 ตัวนับคนบน Raspberry Pi (`YOLO_Pi`, service `yolo-pi-counter`)
+ขั้น 2-6 ทำทุกเฟรม · ขั้น 7-11 ตามรอบเวลา · ขั้น 12-14 ทำเบื้องหลัง
+
+| ขั้น (โค้ด) | ทำอะไร | รับเข้า | ส่งออก / ส่งไปที่ |
+|---|---|---|---|
+| 1. หากล้อง `common.default_source()` | หา USB webcam ตัวแรก | `/sys/class/video4linux` | หมายเลขกล้อง (เช่น 0) |
+| 2. อ่านภาพ (Ultralytics stream) | อ่านภาพทีละเฟรม | กล้อง `/dev/videoN` | ภาพ 640×480 ~30 เฟรม/วินาที |
+| 3. ตรวจจับ + ติดตาม `model.track()` | YOLO (NCNN) หาคน → ByteTrack ให้ ID ต่อเนื่อง | ภาพ 1 เฟรม · imgsz 320 · class person · conf ≥ 0.1 | กรอบ `[x1,y1,x2,y2]`, ความมั่นใจ, ID |
+| 4. กรองกรอบหลอก | ทิ้งกรอบที่ไม่มั่นใจ | กรอบทั้งหมดของเฟรม | กรอบความมั่นใจ ≥ 0.35 |
+| 5. เฝ้ากล้อง `PictureWatch` | เช็กว่ากล้องยังส่งภาพจริง | ภาพ + เวลา | ภาพดำ 10 วินาที → หยุด → systemd เปิดใหม่และหากล้องใหม่ |
+| 6. นับ `AreaCounter.update()` | ใครข้ามเส้น (ทางลูกศร = เข้า), ใครอยู่ในโซน, ผู้มาเยือนใหม่ | ID + กรอบ, ขนาดภาพ, เวลา, การตั้งค่า (line, zone, anchor) | `{in, out, in_zone, visitors}` ของเฟรม |
+| 7. สะสมรายนาที `MinuteLog.add()` | รวมผลทุกเฟรมของนาที | ผลนับแต่ละเฟรม | ขึ้นนาทีใหม่ = แถวรายนาที 1 แถว |
+| 8. บันทึก `MinuteLog.flush()` | เก็บนาทีที่จบ อัปเดตยอดสะสมของวัน | แถวรายนาที | `data/<วันที่>.csv` · MQTT `pi5/people/count` · คิว Supabase |
+| 9. ส่งขึ้น Supabase `SupabaseOut` | ส่งแถวที่รออยู่ทั้งหมดในครั้งเดียว (thread แยก) | แถวจากคิว | HTTPS POST upsert `minute_counts` · ไม่สำเร็จ = เก็บรอ ลองใหม่ทุก 60 วินาที |
+| 10. ค่าสด ทุก 1 วินาที `MinuteLog.live()` | สรุปสถานะตอนนี้ | ยอดสะสม, คนในโซน 2 วินาทีล่าสุด (ค่ากลาง), กรอบ, FPS | `{time, camera, in_zone, in_today, out_today, visitors_today, people, conf, fps, model, mode, door}` → `pi5/people/live` |
+| 11. ภาพ ทุก 0.2 วินาที `frame_jpeg()` | วาดกรอบ + เส้น/โซน แล้วย่อภาพ | ภาพ + กรอบ + การตั้งค่า | JPEG 480 px คุณภาพ 60 (~10 KB) → `pi5/people/frame` |
+| 12. อ่านการตั้งค่า ทุก 30 วินาที `SettingsSync` | ดูการแก้เส้น/โซนบนเว็บ | แถว `camera_settings` (HTTPS GET) | ใช้เส้น/โซนใหม่ทันที + สำเนา `zones.json` |
+| 13. หาประตู ทุก 10 นาที `DoorFinder` | YOLOE หาประตู เฉพาะตอนยังไม่มีเส้น | 5 ภาพห่างกัน 2 วินาที | `{box, conf}` ใส่ในค่าสด + `door.json` |
+| 14. สถานะ `MqttOut` | แจ้งว่าตัวนับทำงานไหม | การเริ่ม/หยุดโปรแกรม | `online` / `offline` → `pi5/status/people` (Last Will ถ้าหลุด) |
+
+### 6.2 Backend บน Raspberry Pi (`backend/src`, service `yolo-pi-backend`)
+
+| ขั้น (โค้ด) | ทำอะไร | รับเข้า | ส่งออก / ส่งไปที่ |
+|---|---|---|---|
+| 1. รับ MQTT `mqtt.js` | subscribe 4 topic เก็บค่าล่าสุด | `pi5/people/live`, `frame`, `count`, `pi5/status/people` | state `{live, status, frame, lastCount}` → socket.js · นาทีใหม่ = สั่งอ่าน Supabase ใหม่ |
+| 2. แคชข้อมูล `dataSource.js` | โหลดข้อมูลรายนาทีมาพักในหน่วยความจำ | Supabase GET `minute_counts` (หน้าละ 1,000 แถว) | แถว 8 วันล่าสุด · วันนี้อ่านใหม่ทุก 20 วินาที และ 3 วินาทีหลังมีนาทีใหม่ |
+| 3. คำนวณ `buildToday` / `buildCompare` / `buildEvents` / `buildStatus` | สรุปตัวเลขที่หน้าเว็บใช้ | แถวรายนาทีของวัน + ค่าสด | today `{inToday, outToday, visitorsToday, currentPeople, peakHour, maxInRoom, hourlyBars, lastRow}` · compare `{today, yesterday, lastWeek, avg7days}` · events `[{type, severity, time, message}]` · status `{mqttStatus, lastDataTime, lastRow}` |
+| 4. ส่งข้อมูลสด `socket.js` | push ให้ทุกคนที่เปิดเว็บ | เบราว์เซอร์ที่ต่อเข้ามา + ค่าสด/ภาพจาก MQTT | `sync` ทุก 3 วินาที · `live` ทันที · `frame` แบบ volatile |
+| 5. REST API `routes/*` | ตอบคำขอ HTTP | GET `/api/today`, `status`, `compare`, `events`, `history`, `zones`, `health` | JSON |
+| 6. ตรวจสิทธิ์ `cors` | กันเว็บอื่นเรียก API | Origin ของคำขอ | อนุญาตเฉพาะ `FRONTEND_URL` |
+
+### 6.3 Dashboard บน Vercel (`dashboard-camera-ai`)
+
+| ขั้น (โค้ด) | ทำอะไร | รับเข้า | ส่งออก / ส่งไปที่ |
+|---|---|---|---|
+| 1. แสดงหน้า `Dashboard.tsx` | วาดการ์ดทุกใบทันที | - | หน้าเว็บ (ยังไม่มีข้อมูล = "—") |
+| 2. รับข้อมูลสด `useSocketSync` | ต่อ Socket.IO (WebSocket ก่อน) | `sync` / `live` / `frame` | state ข้อมูลทั้งหน้า + ภาพ (blob URL ล้างภาพเก่าทุกครั้ง) |
+| 3. ข้อมูลสำรอง `lib/api.ts` | เรียก REST ตอนเปิดหน้า | GET `/api/today`, `/api/status`, `/api/compare` | today, status, compare (หมดเวลา 10 วินาที) |
+| 4. ข้อมูลจาก Supabase `/stats/day/[date]` | server ของ Vercel อ่าน Supabase แล้วคำนวณ | วันที่ (YYYY-MM-DD หรือ `today`) | `DayStats {date, today, compare, events}` |
+| 5. รายการวัน `/stats/days` | สรุปทุกวันที่มีข้อมูล | view `minute_days` | `[{date, minutes, in, out, visitors, maxInRoom}]` |
+| 6. ตั้งค่าการนับ `ZoneEditor` + `/stats/zones` | ผู้ใช้วาดเส้น/โซนบนภาพสดแล้วบันทึก | จุดที่คลิก (0-1), จุดนับ (เท้า/กลางตัว) | POST `{zones}` → ตรวจรูปแบบ → upsert `camera_settings` → คืน `{zones}` |
+| 7. เลือกข้อมูลที่แสดง `Dashboard.tsx` | รวมทุกแหล่ง | ข้อมูลสด + Supabase | วันนี้: ข้อมูลสดก่อน ถ้าบอร์ดปิดใช้ Supabase · วันย้อนหลัง: Supabase |
+
+## 7. การส่งและจัดเก็บข้อมูล
+
+### 7.1 ข้อมูลที่วิ่งในระบบ
 
 | ข้อมูล | หน้าตา | ความถี่ |
 |---|---|---|
@@ -126,7 +216,7 @@ OS-Yolo/
 | ข้อมูลทั้งหน้า (sync) | today + hourlyBars, status, events 50 รายการล่าสุด, compare (~13.5 KB) | ทุก 3 วินาที |
 | การตั้งค่าการนับ | `{"line": [[x,y],[x,y]] \| null, "zone": [[x,y],...] \| null, "anchor": "bottom" \| "center"}` (สัดส่วน 0-1) | เมื่อกดบันทึก |
 
-### 5.2 ช่องทางและวิธีส่ง
+### 7.2 ช่องทางและวิธีส่ง
 
 **MQTT** (Mosquitto บน Pi, `mqtt://localhost:1883`)
 
@@ -167,7 +257,7 @@ OS-Yolo/
 
 **Supabase REST จากบอร์ด:** ตัวนับ upsert แถวรายนาทีลง `minute_counts` ใน thread แยก (เน็ตหลุด = เก็บรอในหน่วยความจำได้ 1 วัน ส่งซ้ำทุก 60 วินาที, นาทีเดิมไม่เกิดแถวซ้ำ) และอ่าน `camera_settings` ทุก 30 วินาที
 
-### 5.3 ข้อมูลเก็บอยู่ที่ไหน
+### 7.3 ข้อมูลเก็บอยู่ที่ไหน
 
 | ที่เก็บ | เก็บอะไร | อายุ |
 |---|---|---|
@@ -178,7 +268,7 @@ OS-Yolo/
 | เบราว์เซอร์ | ไม่เก็บ แสดงผลอย่างเดียว | - |
 | วิดีโอ | ไม่บันทึกที่ไหนเลย | - |
 
-### 5.4 Dashboard ดึงข้อมูลอย่างไร (ตอนเปิดหน้า)
+### 7.4 Dashboard ดึงข้อมูลอย่างไร (ตอนเปิดหน้า)
 
 1. โหลดหน้าเว็บจาก Vercel การ์ดขึ้นทันที (ยังไม่มีข้อมูลแสดง "—")
 2. ต่อ Socket.IO กับ backend → ได้ `sync` และภาพล่าสุดทันที แล้วรับ `live` / `frame` / `sync` ต่อเนื่อง
@@ -187,7 +277,7 @@ OS-Yolo/
 5. เรียก `/stats/days` สำหรับตารางสรุปและตัวเลือกวัน อ่านใหม่ทุก 5 นาที
 6. เลือกวันย้อนหลัง → `/stats/day/<วันที่>`
 
-### 5.5 Supabase schema
+### 7.5 Supabase schema
 
 ไฟล์ `supabase/schema.sql` (รันซ้ำได้)
 - `minute_counts` — PK `(camera, time)` · `in_count`, `out_count`, `in_zone_avg`, `in_zone_max`, `visitors`, `in_today`, `out_today`, `visitors_today`, `fps`, `cpu_temp_c`, `model`, `seconds`
@@ -195,14 +285,14 @@ OS-Yolo/
 - `camera_settings` — PK `camera` · `zones` (jsonb), `updated_at`
 - ทุกตารางเปิด RLS ไม่มี policy และ revoke สิทธิ์ `anon` / `authenticated` → เข้าถึงได้เฉพาะ secret key
 
-## 6. ติดตั้งครั้งแรก
+## 8. ติดตั้งครั้งแรก
 
-### 6.1 Supabase
+### 8.1 Supabase
 1. สร้าง project ใหม่ (แยกจากโปรเจกต์อื่น)
 2. SQL Editor → วางทั้งไฟล์ `supabase/schema.sql` → Run
 3. เก็บ **Project URL** และ **secret key** (`sb_secret_...`, Project Settings > API Keys) — publishable key ใช้ไม่ได้ (ตารางปิดสิทธิ์ไว้)
 
-### 6.2 ไฟล์ตั้งค่า (ไม่ขึ้น GitHub)
+### 8.2 ไฟล์ตั้งค่า (ไม่ขึ้น GitHub)
 
 | ไฟล์ / ที่ | ค่าที่ต้องใส่ |
 |---|---|
@@ -210,7 +300,7 @@ OS-Yolo/
 | `backend/.env` (จาก `.env.example`) | `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `MQTT_BROKER_URL=mqtt://localhost:1883`, `FRONTEND_URL` (เพิ่มโดเมน Vercel ภายหลัง) |
 | Vercel → Environment Variables (Production) | `NEXT_PUBLIC_API_URL=https://<funnel>/api`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY` |
 
-### 6.3 Raspberry Pi
+### 8.3 Raspberry Pi
 บนบอร์ด (ครั้งเดียว, ต้องต่อเน็ต): เปิด SSH และติดตั้ง Tailscale
 ```bash
 sudo systemctl enable --now ssh
@@ -234,7 +324,7 @@ sudo tailscale funnel --bg 4000                      # ได้ https://<เค
 ```
 แนะนำ: ปิด key expiry ของเครื่องบอร์ดในหน้า admin ของ Tailscale (ค่าเริ่ม 180 วัน) ไม่งั้นลิงก์จะหยุดทำงาน
 
-### 6.4 Dashboard บน Vercel
+### 8.4 Dashboard บน Vercel
 ```bash
 cd dashboard-camera-ai
 npx vercel@latest                                    # สร้าง project (ชื่อตัวพิมพ์เล็ก)
@@ -245,14 +335,14 @@ npx vercel@latest --prod
 ```
 ถ้าเชื่อม GitHub แทน: Root Directory = `dashboard-camera-ai` และใส่ env ชุดเดียวกัน
 
-### 6.5 อนุญาตโดเมนของ Dashboard
+### 8.5 อนุญาตโดเมนของ Dashboard
 บนบอร์ด เพิ่มโดเมน Vercel ใน `~/backend/.env` แล้วรีสตาร์ท
 ```bash
 # FRONTEND_URL=http://localhost:3000,https://os-yolo-dashboard.vercel.app
 cd ~/YOLO_Pi && bash run.sh backend restart
 ```
 
-## 7. การใช้งานประจำวัน
+## 9. การใช้งานประจำวัน
 
 1. เสียบไฟบอร์ดที่ต่อ webcam (บอร์ดต้องรู้จัก WiFi ของที่นั้น หรือใช้ Hotspot มือถือตัวเดิม)
 2. รอ 1-2 นาที: Tailscale, backend, ตัวนับเปิดเองทั้งหมด
@@ -261,7 +351,7 @@ cd ~/YOLO_Pi && bash run.sh backend restart
 
 ตำแหน่งกล้องที่แนะนำ: สูงประมาณ 2 เมตร มองเฉียงลงเห็นประตูทั้งบานและพื้นหน้าประตู 2-3 เมตร
 
-## 8. อัปเดตโค้ด
+## 10. อัปเดตโค้ด
 
 | แก้ส่วนไหน | ทำอะไร |
 |---|---|
@@ -270,7 +360,7 @@ cd ~/YOLO_Pi && bash run.sh backend restart
 | `dashboard-camera-ai/` | Mac: `cd dashboard-camera-ai && npx vercel@latest --prod` |
 | `supabase/schema.sql` | รันส่วนที่เพิ่มใน SQL Editor |
 
-## 9. คำสั่งที่ใช้บ่อย
+## 11. คำสั่งที่ใช้บ่อย
 
 รันใน `~/YOLO_Pi` บนบอร์ด (รายการเต็ม: `bash run.sh` หรือ `YOLO_Pi/README.md`)
 
@@ -284,7 +374,7 @@ cd ~/YOLO_Pi && bash run.sh backend restart
 | `bash run.sh 4 --line x1,y1,x2,y2` | ตั้งเส้นบนบอร์ดโดยตรง (ปกติใช้ dashboard แทน) |
 | `tailscale funnel status` | ดูลิงก์ HTTPS ของบอร์ด |
 
-## 10. ผลวัด (Metrics)
+## 12. ผลวัด (Metrics)
 
 ความแม่นของโมเดล (ภาพทดสอบ 200 รูป, 372 คน, วัดบน Mac):
 
@@ -316,7 +406,7 @@ cd ~/YOLO_Pi && bash run.sh backend restart
 
 รายละเอียดการวัดทั้งหมด: `YOLO_Pi/README.md`
 
-## 11. แก้ปัญหาเบื้องต้น
+## 13. แก้ปัญหาเบื้องต้น
 
 | อาการ | สาเหตุที่พบบ่อย | แก้ |
 |---|---|---|
@@ -329,7 +419,7 @@ cd ~/YOLO_Pi && bash run.sh backend restart
 | ปุ่มบันทึกการตั้งค่าขึ้น "บันทึกไม่ได้" | Vercel ไม่มี `SUPABASE_URL` / `SUPABASE_SECRET_KEY` | เพิ่ม env แล้ว `npx vercel@latest --prod` |
 | ลิงก์ Funnel ใช้ไม่ได้หลังผ่านไปหลายเดือน | Tailscale key หมดอายุ | login ใหม่บนบอร์ด และปิด key expiry |
 
-## 12. ความปลอดภัย
+## 14. ความปลอดภัย
 
 - `.env` ทุกไฟล์อยู่ใน `.gitignore` · secret key อยู่แค่บนบอร์ดและฝั่ง server ของ Vercel ไม่ถูกส่งไปเบราว์เซอร์
 - Supabase เปิด RLS ไม่มี policy ให้ key สาธารณะ
@@ -338,7 +428,7 @@ cd ~/YOLO_Pi && bash run.sh backend restart
 - ไม่บันทึกวิดีโอ เก็บเฉพาะตัวเลขรายนาที
 - หน้า "ตั้งค่าการนับ" ไม่มีระบบ login: ใครมีลิงก์ dashboard ก็แก้เส้นได้ (เหมาะกับงานในชั้นเรียน)
 
-## 13. ข้อจำกัด
+## 15. ข้อจำกัด
 
 - ความแม่นขึ้นกับตำแหน่งกล้อง · คนเบียดกันหรือถูกบังตอนข้ามเส้นอาจนับพลาด
 - กล้อง 1 ตัวต่อ 1 ห้อง · โมเดลขนาด nano ไม่เหมาะกับคนแน่นมาก
