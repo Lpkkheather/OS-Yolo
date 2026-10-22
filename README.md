@@ -1,5 +1,23 @@
 # OS-Yolo — ระบบนับคนเข้า-ออกห้องด้วย YOLO บน Raspberry Pi
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Raspberry_Pi_5-A22846?style=for-the-badge&logo=raspberrypi&logoColor=white" alt="Raspberry Pi 5">
+  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Ultralytics_YOLO-111F68?style=for-the-badge&logo=ultralytics&logoColor=white" alt="Ultralytics YOLO">
+  <img src="https://img.shields.io/badge/OpenCV-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white" alt="OpenCV">
+  <img src="https://img.shields.io/badge/MQTT_%C2%B7_Mosquitto-3C5280?style=for-the-badge&logo=eclipsemosquitto&logoColor=white" alt="MQTT · Mosquitto">
+  <img src="https://img.shields.io/badge/Node.js-5FA04E?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express">
+  <img src="https://img.shields.io/badge/Socket.IO-010101?style=for-the-badge&logo=socketdotio&logoColor=white" alt="Socket.IO">
+  <img src="https://img.shields.io/badge/Supabase-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase">
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js">
+  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React">
+  <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS">
+  <img src="https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="Vercel">
+  <img src="https://img.shields.io/badge/Tailscale-242424?style=for-the-badge&logo=tailscale&logoColor=white" alt="Tailscale">
+</p>
+
 กล้อง USB ต่อกับ Raspberry Pi 5 ใช้โมเดล YOLO ที่เทรนเองตรวจจับและติดตามคน นับคนเข้า-ออกห้องและคนในห้องตอนนี้
 ส่งข้อมูลรายนาทีขึ้น Supabase และแสดงผลบน Dashboard (Next.js บน Vercel) ทั้งภาพตรวจจับสด สถิติวันนี้ และข้อมูลย้อนหลังรายวัน
 
@@ -106,14 +124,14 @@ OS-Yolo/
 
 | ด้าน | เทคโนโลยี | ใช้ทำอะไร |
 |---|---|---|
-| ฮาร์ดแวร์ | Raspberry Pi 5, USB webcam | ประมวลผล AI ที่หน้างาน |
-| AI / Vision | Python, Ultralytics YOLO 8.4.160 (yolo26n / yolo11n ที่เทรนเอง), NCNN, ByteTrack, OpenCV | ตรวจจับและติดตามคน · NCNN ทำให้เร็วพอบน CPU ของ Pi |
-| AI ช่วยตั้งค่า | YOLOE (open-vocabulary) + "door", "sliding door", "glass door" (+ "cabinet" เป็นคำแข่ง) | เสนอเส้นนับที่ประตู |
-| Messaging | MQTT, Mosquitto, paho-mqtt 2.1, mqtt.js | ส่งข้อมูลจากตัวนับไป backend |
-| Backend | Node.js ≥ 20, Express 4, Socket.IO 4.8, swagger-ui-express | REST API, push ข้อมูลสด, เอกสาร API ที่ `/api-docs` |
-| Database | Supabase (PostgreSQL), PostgREST | ข้อมูลรายนาที, สรุปรายวัน, การตั้งค่ากล้อง · เปิด RLS |
-| Frontend | Next.js 16, React 19, Tailwind CSS 4, Recharts, socket.io-client, lucide-react | Dashboard + route handlers ฝั่ง server |
-| Infra | Vercel, Tailscale (VPN + Funnel), systemd, GitHub | deploy เว็บ, ลิงก์ HTTPS ถึงบอร์ด, เปิด service ตอนบูต |
+| ฮาร์ดแวร์ | <img src="https://img.shields.io/badge/Raspberry_Pi-5-A22846?logo=raspberrypi&logoColor=white" alt="Raspberry Pi 5"> USB webcam | ประมวลผล AI ที่หน้างาน |
+| AI / Vision | <img src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white" alt="Python"> <img src="https://img.shields.io/badge/Ultralytics-8.4.160-111F68?logo=ultralytics&logoColor=white" alt="Ultralytics 8.4.160"> <img src="https://img.shields.io/badge/OpenCV-5C3EE8?logo=opencv&logoColor=white" alt="OpenCV"> <img src="https://img.shields.io/badge/NCNN-4B5563" alt="NCNN"> <img src="https://img.shields.io/badge/ByteTrack-4B5563" alt="ByteTrack"><br>yolo26n / yolo11n ที่เทรนเอง | ตรวจจับและติดตามคน · NCNN ทำให้เร็วพอบน CPU ของ Pi |
+| AI ช่วยตั้งค่า | <img src="https://img.shields.io/badge/YOLOE-open--vocabulary-111F68?logo=ultralytics&logoColor=white" alt="YOLOE open-vocabulary"><br>"door", "sliding door", "glass door" (+ "cabinet" เป็นคำแข่ง) | เสนอเส้นนับที่ประตู |
+| Messaging | <img src="https://img.shields.io/badge/MQTT-660066?logo=mqtt&logoColor=white" alt="MQTT"> <img src="https://img.shields.io/badge/Mosquitto-3C5280?logo=eclipsemosquitto&logoColor=white" alt="Mosquitto"><br>paho-mqtt 2.1, mqtt.js | ส่งข้อมูลจากตัวนับไป backend |
+| Backend | <img src="https://img.shields.io/badge/Node.js-%E2%89%A5_20-5FA04E?logo=nodedotjs&logoColor=white" alt="Node.js ≥ 20"> <img src="https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white" alt="Express 4"> <img src="https://img.shields.io/badge/Socket.IO-4.8-010101?logo=socketdotio&logoColor=white" alt="Socket.IO 4.8"> <img src="https://img.shields.io/badge/Swagger-85EA2D?logo=swagger&logoColor=black" alt="Swagger"> | REST API, push ข้อมูลสด, เอกสาร API ที่ `/api-docs` |
+| Database | <img src="https://img.shields.io/badge/Supabase-3FCF8E?logo=supabase&logoColor=white" alt="Supabase"> <img src="https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL"><br>PostgREST | ข้อมูลรายนาที, สรุปรายวัน, การตั้งค่ากล้อง · เปิด RLS |
+| Frontend | <img src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" alt="Next.js 16"> <img src="https://img.shields.io/badge/React-19-20232A?logo=react&logoColor=61DAFB" alt="React 19"> <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white" alt="Tailwind CSS 4"> <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript"><br>Recharts, socket.io-client, lucide-react | Dashboard + route handlers ฝั่ง server |
+| Infra | <img src="https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white" alt="Vercel"> <img src="https://img.shields.io/badge/Tailscale-VPN_%2B_Funnel-242424?logo=tailscale&logoColor=white" alt="Tailscale VPN + Funnel"> <img src="https://img.shields.io/badge/GitHub-181717?logo=github&logoColor=white" alt="GitHub"> <img src="https://img.shields.io/badge/systemd-4B5563" alt="systemd"> | deploy เว็บ, ลิงก์ HTTPS ถึงบอร์ด, เปิด service ตอนบูต |
 
 ## 5. Library และ Framework
 
