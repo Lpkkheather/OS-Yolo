@@ -35,6 +35,19 @@ export interface TodayData {
   lastRow: MinuteRow | null;
   /** เวลาของค่าสดล่าสุดจาก Pi (ISO) */
   liveTime?: string | null;
+  /** ผลการตรวจจับตอนนี้ของโมเดล (socket) — null = ตัวนับไม่ได้ส่งค่าสด */
+  detection?: Detection | null;
+}
+
+/** ผลการตรวจจับตอนนี้ของโมเดลบน Pi (MQTT pi5/people/live) — null ในแต่ละช่อง = ตัวนับรุ่นเก่าที่ยังไม่ส่งค่านั้น */
+export interface Detection {
+  /** คนที่โมเดลเห็นในภาพตอนนี้ */
+  people: number | null;
+  /** ความมั่นใจเฉลี่ยของกรอบในภาพตอนนี้ (0-1) — null = ไม่มีคนในภาพ */
+  conf: number | null;
+  fps: number | null;
+  /** เช่น yolo26n_640 */
+  model: string | null;
 }
 
 export interface StatusResponse {
@@ -178,7 +191,7 @@ export function useSseToday(initialData?: TodayData) {
       try {
         const msg: SseMessage = JSON.parse(event.data);
         console.log("[SSE] Received:", msg.type);
-        
+
         if (msg.type === "TODAY_UPDATE") {
           setData(msg.payload as TodayData);
         } else if (msg.type === "MQTT_UPDATE") {

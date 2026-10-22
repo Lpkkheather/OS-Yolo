@@ -18,10 +18,12 @@ import zonesRouter from "./routes/zones.js";
 import { startMqtt } from "./mqtt.js";
 import { startSse } from "./sse.js";
 import { startSocket } from "./socket.js";
+import { startDataSource } from "./dataSource.js";
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
-const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:3000";
+// URL ของ dashboard (CORS) — หลายอันคั่นด้วย , เช่น http://localhost:3000,https://<โปรเจกต์>.vercel.app
+const FRONTEND_URL = (process.env.FRONTEND_URL || "http://localhost:3000").split(",").map((u) => u.trim().replace(/\/+$/, ""));
 const SYNC_SECONDS = Number(process.env.SOCKET_SYNC_SECONDS ?? 3);
 
 app.use(cors({ origin: FRONTEND_URL }));
@@ -69,13 +71,16 @@ if (process.env.MQTT_BROKER_URL) {
   console.log("[Server] MQTT_BROKER_URL ไม่ได้ตั้งค่า — ข้าม MQTT");
 }
 
+// แถวรายนาที (กราฟ / ตารางเทียบ / ประวัติ): CSV หรือ Supabase — โหลดก่อนเปิด server ให้ client แรกได้ข้อมูลครบ
+await startDataSource();
+
 // Socket.IO ใช้ http server เดียวกับ Express (พอร์ตเดียวกัน)
 const httpServer = createServer(app);
 startSocket(httpServer, FRONTEND_URL, SYNC_SECONDS);
 
 httpServer.listen(PORT, () => {
   console.log(`[Server] รันที่ http://localhost:${PORT}`);
-  console.log(`[Server] CORS: ${FRONTEND_URL}`);
+  console.log(`[Server] CORS: ${FRONTEND_URL.join(", ")}`);
   console.log(`[Server] Socket.IO: ws://localhost:${PORT} (event "sync" ทุก ${SYNC_SECONDS} วินาที)`);
   console.log(`[Server] SSE endpoint: http://localhost:${PORT}/api/stream/today`);
   console.log(`[Server] Swagger UI: http://localhost:${PORT}/api-docs`);

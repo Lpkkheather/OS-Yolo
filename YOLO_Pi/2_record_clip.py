@@ -34,7 +34,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=float, default=30)
     ap.add_argument("--name", default=time.strftime("clip_%Y%m%d_%H%M%S"))
-    ap.add_argument("--source", default=None, help="picamera | webcam index (default: Pi camera on the Pi, else 0)")
+    ap.add_argument("--source", default=None, help="picamera | webcam index (default: a USB webcam if plugged in, else the Pi camera, else 0)")
     ap.add_argument("--size", default="1280x720", help="saved video size WxH")
     ap.add_argument("--fps", type=float, default=30, help="frame rate written into the video file")
     ap.add_argument("--no-show", action="store_true", help="do not open a preview window")

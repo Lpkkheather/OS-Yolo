@@ -1,10 +1,14 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CompareResponse } from "@/lib/api";
+import { CompareResponse, CompareStat } from "@/lib/api";
 
-// data มาจาก Socket.IO "sync" (GET /api/compare) — อัปเดตพร้อมทั้งหน้า
-export function CompareCard({ data: compareData }: { data: CompareResponse | null }) {
+// stat = null → วันนั้นไม่มีข้อมูล: แสดง "—" (0 จะดูเหมือนวันนั้นไม่มีคนเลย)
+const show = (stat: CompareStat | null, key: "in" | "out") => stat?.[key] ?? "—";
+
+// data มาจาก Socket.IO "sync" (GET /api/compare) — อัปเดตพร้อมทั้งหน้า; ก่อน socket ต่อได้ใช้ค่าจาก fetch ตอนเปิดหน้า
+// archived = ดูวันที่ผ่านมาแล้ว: "วันนี้ / เมื่อวาน" เทียบจากวันที่เลือก
+export function CompareCard({ data: compareData, archived = false }: { data: CompareResponse | null; archived?: boolean }) {
   if (!compareData) {
     return (
       <Card className="bg-[#1e1e1e] border-[#2a2a2a]">
@@ -26,17 +30,20 @@ export function CompareCard({ data: compareData }: { data: CompareResponse | nul
   }
 
   const rows = [
-    { label: "เมื่อวาน", stat: compareData.yesterday },
-    { label: "สัปดาห์ก่อน", stat: compareData.lastWeek },
+    { label: archived ? "วันก่อนหน้า" : "เมื่อวาน", stat: compareData.yesterday },
+    { label: archived ? "7 วันก่อนหน้า" : "สัปดาห์ก่อน", stat: compareData.lastWeek },
     { label: "เฉลี่ย 7 วัน", stat: compareData.avg7days },
   ];
 
   return (
-    <Card>
+    <Card className="bg-[#1e1e1e] border-[#2a2a2a]">
       <CardHeader>
         <CardTitle className="font-bold text-gray-200">
           เทียบกับวันอื่น
         </CardTitle>
+        <p className="text-xs text-gray-500">
+          ถึงเวลา {compareData.cutoffTime} ของแต่ละวัน
+        </p>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-3 text-xs w-full text-gray-500 border-b border-[#2a2a2a] pb-2">
@@ -46,12 +53,12 @@ export function CompareCard({ data: compareData }: { data: CompareResponse | nul
         </div>
 
         <div className="grid grid-cols-3 text-sm text-gray-200 w-full mt-4">
-          <span className="text-gray-300 font-medium">วันนี้</span>
+          <span className="text-gray-300 font-medium">{archived ? "วันที่เลือก" : "วันนี้"}</span>
           <span className="text-center text-blue-400 font-semibold">
-            {compareData.today.in}
+            {show(compareData.today, "in")}
           </span>
           <span className="text-center text-purple-400 font-semibold">
-            {compareData.today.out}
+            {show(compareData.today, "out")}
           </span>
         </div>
 
@@ -61,10 +68,16 @@ export function CompareCard({ data: compareData }: { data: CompareResponse | nul
             className="grid grid-cols-3 text-md text-gray-400 mt-4"
           >
             <span>{r.label}</span>
-            <span className="text-center">{r.stat.in}</span>
-            <span className="text-center">{r.stat.out}</span>
+            <span className="text-center">{show(r.stat, "in")}</span>
+            <span className="text-center">{show(r.stat, "out")}</span>
           </div>
         ))}
+
+        {compareData.daysWithData === 0 && (
+          <p className="text-xs text-gray-500 mt-4">
+            ยังไม่มีข้อมูลของ 7 วันก่อน — ช่องเทียบจะมีตัวเลขเมื่อตัวนับเก็บข้อมูลไว้แล้วอย่างน้อย 1 วัน
+          </p>
+        )}
       </CardContent>
     </Card>
   );

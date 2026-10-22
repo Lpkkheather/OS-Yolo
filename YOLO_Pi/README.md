@@ -19,7 +19,8 @@
 | `bash run.sh 3` | 3 **กล้องสด** | ตรวจจับ + ติดตามคนสด + บันทึกผล (กด q ปิด) | `metrics/<เครื่อง>/camera/` |
 | `bash run.sh 4` | 4 **ตั้งเส้น / โซน** | ภาพจากกล้อง → คลิกวาดเส้นนับ เข้า/ออก และโซน | `zones.json` |
 | `bash run.sh 3 --zones` | 3 **ดูการนับ** | กล้องสด + เส้น โซน ตัวนับ บนภาพ | `data/<วันที่>.csv` |
-| `bash run.sh count` | **นับจริง** | ไม่เปิดหน้าต่าง · บันทึกทุก 1 นาที + ส่ง MQTT | `data/<วันที่>.csv`, `pi5/people/count` |
+| `bash run.sh count` | **นับจริง** | ไม่เปิดหน้าต่าง · บันทึกทุก 1 นาที + ส่ง MQTT (+ Supabase ถ้าตั้งไว้) | `data/<วันที่>.csv`, `pi5/people/count`, ตาราง `minute_counts` |
+| `bash run.sh upload` | ส่งย้อนหลัง | ส่ง `data/<วันที่>.csv` ขึ้น Supabase (วันก่อนตั้ง Supabase / ช่วงเน็ตหลุด) · ส่งซ้ำได้ไม่เกิดแถวซ้ำ | ตาราง `minute_counts` |
 | `bash run.sh service install` | **นับเองตอนเปิดเครื่อง** | systemd: เริ่มตอนบูต + รีสตาร์ทเองถ้าล่ม (เฉพาะ Pi) | `bash run.sh service logs` |
 
 เพิ่มเติม: `bash run.sh 1 --quick` (50 รูป ~1 นาทีบน Pi) · `bash run.sh 3 --no-show --seconds 60` (ผ่าน SSH ไม่มีจอ)
@@ -79,10 +80,30 @@
 | `fps`, `cpu_temp_c`, `model` | สุขภาพระบบ — ใช้ดูว่าข้อมูลช่วงไหนเชื่อถือได้ |
 
 - `pi5/status/people` = `online` / `offline` (retained + Last Will) แบบเดียวกับ service อื่นใน `pi-mqtt-llm`
+- ทุก 1 วินาที: `pi5/people/live` = คนในโซนตอนนี้ + ยอดวันนี้ถึงวินาทีนี้ + ผลการตรวจจับ (`people` คนในภาพ, `conf`
+  ความมั่นใจเฉลี่ย, `fps`, `model`) · ทุก 0.2 วินาที: `pi5/people/frame` = ภาพ JPEG (กว้าง 480 px) ที่โมเดลวาดกรอบ เส้น และโซนแล้ว
+  → การ์ด "การตรวจจับของโมเดล" บน dashboard · ไม่ส่งภาพ: `bash run.sh count --frames off` (หรือ `service install --frames off`)
 - broker ล่ม / ยังไม่เปิด: โปรแกรม **นับต่อ** · ข้อมูลรอในคิวแล้วส่งเมื่อ broker กลับมา · และอยู่ใน CSV เสมอ
 - หลังรีสตาร์ท อาจมี 2 แถวที่ `time` เดียวกัน (นาทีที่ถูกตัด) → `in` / `out` / `visitors` เอามาบวกกัน
-- ดูข้อมูลบน Pi: `tail -f data/$(date +%F).csv` · `mosquitto_sub -h localhost -t 'pi5/people/#' -t pi5/status/people -v`
+- ดูข้อมูลบน Pi: `tail -f data/$(date +%F).csv` · `mosquitto_sub -h localhost -t pi5/people/count -t pi5/people/live -t pi5/status/people -v`
+  (ไม่ใช้ `pi5/people/#`: จะได้ภาพ JPEG ของ `pi5/people/frame` เป็นตัวอักษรขยะเต็มจอ)
 - คลิปทดสอบ: แถวไปที่ `data/test_<คลิป>.csv` (นาที = เวลาในวิดีโอ) ไม่ปนกับข้อมูลจริง
+  และไม่ขึ้น dashboard (กราฟ / ตารางเทียบใช้เฉพาะ `data/<วันที่>.csv` หรือ Supabase) → ทดสอบ dashboard ด้วยกล้องสด
+
+### Supabase — เก็บข้อมูลรายนาทีบนคลาวด์ (ไม่บังคับ)
+
+ทำให้ backend / dashboard ไม่ต้องรันบน Pi และประวัติไม่หายถ้า SD card เสีย · ไม่ตั้ง = ทำงานแบบเดิม (CSV + MQTT)
+**ใช้ Supabase project ของ OS-Yolo เอง** — อย่าใช้ project / key ร่วมกับโปรเจกต์อื่น
+
+1. supabase.com → **New project** (เช่น `os-yolo`, region Singapore)
+2. SQL Editor → วางไฟล์ `../supabase/schema.sql` ทั้งไฟล์ → Run (สร้างตาราง `minute_counts`)
+3. `cp .env.example .env` แล้วใส่ `SUPABASE_URL` (Project Settings > Data API) และ `SUPABASE_SECRET_KEY`
+   (Project Settings > API Keys > secret) — `.env` ไม่ขึ้น GitHub · `bash run.sh send` copy ไป Pi ให้ด้วย
+4. บน Pi: `bash run.sh upload` (ส่งวันที่นับไว้แล้ว) → `bash run.sh service restart` (นาทีใหม่ขึ้น Supabase เอง)
+
+- เน็ตหลุด: นับต่อ · นาทีที่ส่งไม่ได้รอในหน่วยความจำแล้วส่งเมื่อกลับมา (สูงสุด 1 วัน) · อยู่ใน CSV เสมอ → `bash run.sh upload`
+- คลิปไม่ถูกส่ง · ปิดเฉพาะรอบ: `--supabase off`
+- secret key เข้าถึงข้อมูลได้ทั้งหมด: ใส่แค่ใน `YOLO_Pi/.env` และ `backend/.env` ห้ามใส่ใน dashboard (`NEXT_PUBLIC_*`)
 
 ## ผลบน Mac (ทำแล้ว ✅)
 
@@ -146,7 +167,7 @@
 ```
 
 ```bash
-mosquitto_sub -t 'pi5/people/#' -t pi5/status/people -v
+mosquitto_sub -t pi5/people/count -t pi5/people/live -t pi5/status/people -v
 ```
 
 ```bash
@@ -183,8 +204,9 @@ camera/
 ```
 YOLO_Pi/
 ├── run.sh · send_to_pi.sh · .gitignore · requirements.txt  (+ push_to_github.sh เฉพาะเครื่องผู้พัฒนา)
-├── common.py · counting.py (นับเส้น/โซน, บันทึกรายนาที, MQTT)
-├── 0_export_ncnn.py · 1_eval.py · 2_record_clip.py · 3_camera.py · 4_set_zones.py
+├── .env.example  แม่แบบของ .env (Supabase URL + secret key — .env ไม่ขึ้น GitHub)
+├── common.py · counting.py (นับเส้น/โซน, บันทึกรายนาที, MQTT, Supabase)
+├── 0_export_ncnn.py · 1_eval.py · 2_record_clip.py · 3_camera.py · 4_set_zones.py · 5_upload_supabase.py
 ├── zones.json    เส้น/โซนของกล้องนี้ (สร้างด้วย bash run.sh 4) · zones_preview.jpg (เฉพาะตอนไม่มีจอ)
 ├── data/         <วันที่>.csv = ข้อมูลนับรายนาที · test_<คลิป>.csv = จากคลิปทดสอบ
 ├── models/       yolo26n.pt · yolo11n.pt · <model>_<640|320>_ncnn_model/ (ใช้บน Pi)
@@ -193,12 +215,16 @@ YOLO_Pi/
 ├── results/<เครื่อง>/   ภาพผลทีละรูป (NCNN) · camera/*.mp4 (ถ้าใช้ --save-video)
 ├── metrics/<เครื่อง>/   summary.md + accuracy / iou / counting_mae / speed / missed / agreement.csv ·
 │                       per_image/ · per_person/ (พลาดเพราะอะไร รายคน) · camera/
-└── logs/         บันทึกหน้าจอของขั้น 0, 1, import
+└── logs/         บันทึกหน้าจอของขั้น 0, 1, import, upload
 ```
 
 ## หมายเหตุ
 
-- บน Pi ขั้น 2–4 ใช้กล้อง Pi ผ่าน **Picamera2** อัตโนมัติ (บน Mac ใช้ webcam) · ครั้งแรกเช็กกล้องด้วย `rpicam-hello -t 3000`
+- กล้องเลือกเอง (ขั้น 2–4 และ service): เสียบ **USB webcam** อยู่ → ใช้ webcam (หาเลข `/dev/video` ให้เอง: บน Pi 5
+  มักไม่ใช่ 0 เพราะอุปกรณ์วิดีโอของ Pi เองมาก่อน) · ไม่มี webcam → กล้อง Pi ผ่าน **Picamera2** (เช็กด้วย `rpicam-hello -t 3000`)
+  · บน Mac → webcam 0 · ไม่ต้องใส่ `--source` ตอน `service install`: หาใหม่ทุกครั้งที่เริ่ม (ย้ายช่อง USB ได้)
+- webcam หลุด / ถอดสาย: ได้ภาพดำ 10 วินาที → ตัวนับหยุด → systemd เริ่มใหม่ใน 10 วินาทีแล้วหากล้องใหม่ (เสียบกลับเมื่อไหร่ก็นับต่อ)
+  · ดูว่า Pi เห็น webcam ไหม: `ls -l /dev/v4l/by-id/`
   · กล้องใช้ได้ทีละโปรแกรม: ถ้า service นับอยู่ ให้ `bash run.sh service stop` ก่อนรันขั้น 2–4
 - `bash run.sh send` ไม่ copy `results/` และ `data/` ของ Mac ไป Pi และไม่ทับไฟล์ที่ใหม่กว่าบน Pi (เช่น `zones.json` ที่ตั้งบน Pi)
 - PDPA: เก็บแค่ตัวเลข · ภาพที่บันทึกมีแค่ `zones_preview.jpg` (คนเป็นโมเสก) และวิดีโอเมื่อสั่ง `--save-video` (ต้องได้รับความยินยอม)

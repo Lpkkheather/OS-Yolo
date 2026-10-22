@@ -156,6 +156,15 @@
  *         lastRow:
  *           $ref: '#/components/schemas/MinuteRow'
  *           nullable: true
+ *     CompareStat:
+ *       type: object
+ *       nullable: true
+ *       description: null = วันนั้นไม่มีข้อมูล
+ *       properties:
+ *         in:
+ *           type: integer
+ *         out:
+ *           type: integer
  *     CompareResponse:
  *       type: object
  *       properties:
@@ -166,33 +175,17 @@
  *           type: string
  *           example: "14:32"
  *         today:
- *           type: object
- *           properties:
- *             in:
- *               type: integer
- *             out:
- *               type: integer
+ *           $ref: '#/components/schemas/CompareStat'
  *         yesterday:
- *           type: object
- *           properties:
- *             in:
- *               type: integer
- *             out:
- *               type: integer
+ *           $ref: '#/components/schemas/CompareStat'
  *         lastWeek:
- *           type: object
- *           properties:
- *             in:
- *               type: integer
- *             out:
- *               type: integer
+ *           $ref: '#/components/schemas/CompareStat'
  *         avg7days:
- *           type: object
- *           properties:
- *             in:
- *               type: integer
- *             out:
- *               type: integer
+ *           $ref: '#/components/schemas/CompareStat'
+ *         daysWithData:
+ *           type: integer
+ *           description: จำนวนวันใน 7 วันก่อนที่มีข้อมูล (ใช้หาร avg7days)
+ *           example: 5
  *     EventItem:
  *       type: object
  *       properties:

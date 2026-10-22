@@ -2,7 +2,7 @@
 // csvReader.js — อ่านและ parse ไฟล์ CSV จาก YOLO_Pi/data/
 // ============================================================
 import { parse } from "csv-parse/sync";
-import { readFileSync, existsSync, statSync } from "fs";
+import { readFileSync, existsSync, statSync, readdirSync } from "fs";
 import { resolve, join } from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
@@ -108,9 +108,46 @@ export function getDateStr(date) {
   return date.toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
 }
 
+const BANGKOK_HH_MM = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Bangkok",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/**
+ * "HH:MM" ของเวลาในแถว ตามเวลาไทย — ไม่ขึ้นกับ timezone ของเครื่องที่รัน server
+ * (new Date(t).getHours() ใช้ timezone ของเครื่อง: server ที่ตั้งเป็น UTC จะได้ชั่วโมงเลื่อนไป 7 ชั่วโมง)
+ * @param {string} time — ISO เช่น 2026-10-21T14:05:00+07:00
+ */
+export function bangkokHHMM(time) {
+  return BANGKOK_HH_MM.format(new Date(time));
+}
+
+/**
+ * ชั่วโมง 0-23 ของเวลาในแถว ตามเวลาไทย
+ * @param {string} time
+ */
+export function bangkokHour(time) {
+  return parseInt(bangkokHHMM(time).slice(0, 2), 10);
+}
+
 /**
  * คืน path ของ DATA_DIR (สำหรับ debug)
  */
 export function getDataDir() {
   return DATA_DIR;
+}
+
+/**
+ * วันที่มีไฟล์ <วันที่>.csv ใน DATA_DIR (ไม่รวม test_<คลิป>.csv)
+ * @returns {string[]} — YYYY-MM-DD ใหม่สุดก่อน
+ */
+export function listCsvDates() {
+  if (!existsSync(DATA_DIR)) return [];
+  return readdirSync(DATA_DIR)
+    .filter((f) => f.endsWith(".csv") && !f.startsWith("test_"))
+    .map((f) => f.slice(0, 10))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .sort((a, b) => b.localeCompare(a));
 }

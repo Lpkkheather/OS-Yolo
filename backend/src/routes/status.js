@@ -3,14 +3,15 @@
 // ส่งคืน: mqttStatus, เวลาข้อมูลล่าสุด, แถวล่าสุด
 // ============================================================
 import { Router } from "express";
-import { readDayCsv, getTodayStr } from "../csvReader.js";
+import { getTodayStr } from "../csvReader.js";
+import { readDay } from "../dataSource.js";
 import { getMqttState } from "../mqtt.js";
 
 const router = Router();
 
 /** สถานะตอนนี้ — ใช้ทั้ง GET /api/status และ socket sync */
 export function buildStatus() {
-  const rows = readDayCsv(getTodayStr());
+  const rows = readDay(getTodayStr());
   const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
   const { status: mqttStatus } = getMqttState();
 

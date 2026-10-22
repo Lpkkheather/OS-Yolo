@@ -29,11 +29,19 @@ export function HourlyChart({ bars }: Props) {
     : bars
       ? Object.values(bars)
       : [];
-  const data = barArray.map((b: HourlyBarData) => ({
-    hour: `${String(b.hour).padStart(2, "0")}:00`,
-    เข้า: b.in,
-    ออก: b.out,
-  }));
+  // backend ส่งเฉพาะชั่วโมงที่มีข้อมูล → เติมชั่วโมงที่ขาด (Pi ปิด / เน็ตหลุด) ให้แกน X ต่อเนื่อง
+  // ชั่วโมงที่ขาด = null (ไม่มีแท่ง) ไม่ใช่ 0 ซึ่งดูเหมือนชั่วโมงนั้นไม่มีคน
+  const byHour = new Map(barArray.map((b) => [b.hour, b]));
+  const hours = barArray.map((b) => b.hour);
+  const data = [];
+  for (let h = Math.min(...hours); h <= Math.max(...hours); h++) {
+    const b = byHour.get(h);
+    data.push({
+      hour: `${String(h).padStart(2, "0")}:00`,
+      เข้า: b?.in ?? null,
+      ออก: b?.out ?? null,
+    });
+  }
 
   if (data.length === 0) {
     return (
@@ -61,6 +69,11 @@ export function HourlyChart({ bars }: Props) {
             tickLine={false}
           />
           <Tooltip
+            // ค่าเริ่มต้นของ recharts เป็นแถบ #ccc สว่างจ้าบนการ์ดสีเข้ม
+            cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
+            // ชั่วโมงที่ขาดยังแสดงใน tooltip (ไม่งั้นขึ้นแค่เวลาเปล่า ๆ)
+            filterNull={false}
+            formatter={(value) => value ?? "ไม่มีข้อมูล"}
             contentStyle={{
               background: "#1e1e1e",
               border: "1px solid #333",

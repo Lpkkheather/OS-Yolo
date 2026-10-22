@@ -16,20 +16,27 @@
 #   bash run.sh 3 --source clips/site.mp4 --zones --true-in 5 --true-out 3    check the counting on a clip
 #   bash run.sh count          count for real: no window, one row per minute -> data/<date>.csv + MQTT
 #                              pi5/people/count (broker on this Pi; --mqtt <ip> = other broker, --mqtt off = none)
+#                              + Supabase table minute_counts when .env has SUPABASE_URL + SUPABASE_SECRET_KEY
+#   bash run.sh upload         send data/<date>.csv to Supabase (days before Supabase, minutes missed while offline)
+#   bash run.sh upload 2026-10-20      ... only this day (sending a day twice is fine: no duplicate rows)
 #   bash run.sh service install    start "count" at every boot and restart it if it stops (Pi only)
 #   bash run.sh service status | logs | stop | start | restart | uninstall
+#   bash run.sh backend install    the dashboard backend (~/backend, copied by "send") as a service too: API + Socket.IO
+#                              on port 4000, starts at every boot (Pi only; run it again after sending a new backend)
+#   bash run.sh backend status | logs | stop | start | restart | uninstall
 #   bash run.sh import         on the Mac: bring the trained models (models/*_trained.pt) and the test set from
 #                              ~/Documents/YOLO, and convert them to NCNN -> then bash run.sh 1 / send
 #   bash run.sh send           on the Mac: copy this folder to the Pi (asks for the Pi's username + IP)
 #   bash run.sh github "what changed"   on the Mac: put this folder on GitHub (branch YoLo_Detect, folder YOLO_Pi/)
 #   bash run.sh 0              re-export every .pt in models/ -> NCNN
-# Steps 0, 1 and import are also saved in logs/<step>.log
+# Steps 0, 1, import and upload are also saved in logs/<step>.log
 set -euo pipefail
 cd "$(dirname "$0")"
 
 STEP=${1:-}
 [ $# -gt 0 ] && shift
 UNIT=yolo-pi-counter  # systemd service of "bash run.sh service"
+BACKEND_UNIT=yolo-pi-backend  # systemd service of "bash run.sh backend"
 
 camera_free() {  # stop if the counting service has the camera: a second program on it makes the USB camera reset
   local source=""
@@ -117,6 +124,58 @@ EOF
   exit 0
 fi
 
+if [ "$STEP" = backend ]; then
+  # The dashboard backend next to the counting: reads Supabase + this Pi's MQTT (localhost), serves the dashboard on
+  # port 4000 (Tailscale Funnel makes that https for the dashboard on Vercel).
+  ACTION=${1:-status}
+  [ $# -gt 0 ] && shift
+  BACKEND_DIR="$(cd .. && pwd)/backend"
+  case "$ACTION" in
+    install)
+      [ "$(uname)" = Linux ] || { echo "the service is for the Raspberry Pi (Linux + systemd)"; exit 1; }
+      [ "$(id -u)" != 0 ] || { echo "run it without sudo (it asks for sudo itself)"; exit 1; }
+      [ -f "$BACKEND_DIR/package.json" ] || { echo "no $BACKEND_DIR yet: copy it from the Mac with  bash run.sh send"; exit 1; }
+      [ -f "$BACKEND_DIR/.env" ] || { echo "no $BACKEND_DIR/.env (Supabase URL + secret key): copy it from the Mac"; exit 1; }
+      NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
+      if [ "$NODE_MAJOR" -lt 20 ] || ! command -v npm >/dev/null; then
+        echo "the backend needs Node.js 20 or newer with npm (found: $(node --version 2>/dev/null || echo no node)). Install Node 22:"
+        echo "  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs"
+        exit 1
+      fi
+      (cd "$BACKEND_DIR" && npm ci --omit=dev --no-audit --no-fund)
+      sudo tee /etc/systemd/system/$BACKEND_UNIT.service >/dev/null <<EOF
+[Unit]
+Description=OS-Yolo dashboard backend (API + Socket.IO on port 4000)
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+User=$(id -un)
+WorkingDirectory=$BACKEND_DIR
+ExecStart=$(command -v node) src/index.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+      sudo systemctl daemon-reload
+      sudo systemctl enable $BACKEND_UNIT
+      sudo systemctl restart $BACKEND_UNIT  # restart, not start: a newly sent backend is picked up too
+      echo "installed: the backend starts at every boot. Check: curl localhost:4000/api/health · bash run.sh backend logs" ;;
+    uninstall)
+      sudo systemctl disable --now $BACKEND_UNIT || true
+      sudo rm -f /etc/systemd/system/$BACKEND_UNIT.service
+      sudo systemctl daemon-reload
+      echo "removed" ;;
+    start|stop|restart) sudo systemctl "$ACTION" $BACKEND_UNIT ;;
+    status) systemctl status $BACKEND_UNIT --no-pager || true ;;
+    logs) journalctl -u $BACKEND_UNIT -n 30 -f ;;
+    *) echo "usage: bash run.sh backend [install|status|logs|stop|start|restart|uninstall]"; exit 1 ;;
+  esac
+  exit 0
+fi
+
 if [ -f .venv/bin/activate ]; then
   source .venv/bin/activate
 elif [ -f ~/Downloads/Lab07/.venv/bin/activate ]; then
@@ -147,6 +206,7 @@ case "$STEP" in
     names=(); for f in "${trained[@]}"; do names+=("$(basename "$f" .pt)"); done
     run 0_export_ncnn 0_export_ncnn.py --models "${names[@]}" ;;
   0) run 0_export_ncnn 0_export_ncnn.py "$@" ;;
+  upload) run upload 5_upload_supabase.py "$@" ;;
   1) run "1_eval_$(hostname -s)" 1_eval.py "$@" ;;
   2) camera_free "$@"; python 2_record_clip.py "$@" ;;
   3) camera_free "$@"; python 3_camera.py "$@" ;;
@@ -154,5 +214,5 @@ case "$STEP" in
   count)
     [ -f zones.json ] || { echo "no zones.json yet: draw the line / zone first with  bash run.sh 4"; exit 1; }
     exec python 3_camera.py --zones zones.json --mqtt localhost --no-show --no-frame-log --every 0 "$@" ;;
-  *) echo "usage: bash run.sh [setup|1|2|3|4|count|service|import|send|github|0] [options]"; exit 1 ;;
+  *) echo "usage: bash run.sh [setup|1|2|3|4|count|upload|service|backend|import|send|github|0] [options]"; exit 1 ;;
 esac

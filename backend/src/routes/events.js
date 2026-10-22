@@ -3,7 +3,8 @@
 // ส่งคืน: เหตุการณ์จากข้อมูลรายนาที (offline, low FPS, overcrowd, after-hours)
 // ============================================================
 import { Router } from "express";
-import { readDayCsv, getTodayStr, getDateStr } from "../csvReader.js";
+import { getTodayStr, bangkokHour } from "../csvReader.js";
+import { readDay, readDayAsync } from "../dataSource.js";
 
 const router = Router();
 
@@ -19,7 +20,7 @@ const BIZ_END = parseInt(process.env.BUSINESS_HOURS_END ?? "20", 10);
  * @param {string} dateStr
  * @returns {object[]}
  */
-function detectEvents(rows, dateStr) {
+export function detectEvents(rows, dateStr) {
   const events = [];
 
   if (rows.length === 0) return events;
@@ -76,7 +77,7 @@ function detectEvents(rows, dateStr) {
   // 4. เข้า/นอกเวลาทำการ (before BIZ_START or after BIZ_END)
   for (const row of rows) {
     if (!row.time) continue;
-    const hour = new Date(row.time).getHours();
+    const hour = bangkokHour(row.time);
     const inCount = row.in ?? 0;
     const outCount = row.out ?? 0;
     if ((hour < BIZ_START || hour >= BIZ_END) && (inCount > 0 || outCount > 0)) {
@@ -93,9 +94,9 @@ function detectEvents(rows, dateStr) {
   return events;
 }
 
-/** เหตุการณ์ของวันที่กำหนด — ใช้ทั้ง GET /api/events และ socket sync */
-export function buildEvents(dateStr = getTodayStr()) {
-  const events = detectEvents(readDayCsv(dateStr), dateStr);
+/** เหตุการณ์ของวันที่กำหนด — ใช้ทั้ง GET /api/events และ socket sync (วันนี้) */
+export function buildEvents(dateStr = getTodayStr(), rows = readDay(dateStr)) {
+  const events = detectEvents(rows, dateStr);
 
   // เรียงตามเวลาใหม่สุดก่อน
   events.sort((a, b) => new Date(b.time) - new Date(a.time));
@@ -103,9 +104,10 @@ export function buildEvents(dateStr = getTodayStr()) {
   return { date: dateStr, events };
 }
 
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    res.json(buildEvents(req.query.date ?? getTodayStr()));
+    const dateStr = req.query.date ?? getTodayStr();
+    res.json(buildEvents(dateStr, await readDayAsync(dateStr)));
   } catch (err) {
     console.error("[events]", err);
     res.status(500).json({ error: err.message });

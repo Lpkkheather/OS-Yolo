@@ -4,7 +4,10 @@
 //   today   = เหมือน GET /api/today + ค่าสดล่าสุดจาก MQTT pi5/people/live (คนตอนนี้, ยอดวันนี้ถึงวินาทีนี้)
 //   status  = GET /api/status, events = GET /api/events (วันนี้), compare = GET /api/compare
 // ส่งทันทีตอน client ต่อเข้ามา แล้วส่งซ้ำทุกรอบ (เฉพาะตอนมี client)
-// event "live": { time, in_zone } — ส่งทันทีทุกครั้งที่ Pi ส่งค่าสด (~ทุก 1 วินาที) ให้ "คนในห้องตอนนี้" ไม่ต้องรอรอบ sync
+// event "live": { time, in_zone, detection } — ส่งทันทีทุกครั้งที่ Pi ส่งค่าสด (~ทุก 1 วินาที) ให้ "คนในห้องตอนนี้" ไม่ต้องรอรอบ sync
+//   detection = { people, conf, fps, model }: คนที่โมเดลเห็นในภาพตอนนี้ ความมั่นใจเฉลี่ย ความเร็ว ชื่อโมเดล
+// event "frame": Buffer JPEG — ภาพที่โมเดลวาดกรอบแล้ว (~5 ภาพ/วินาที, MQTT pi5/people/frame) + ภาพล่าสุดตอน client ต่อเข้ามา
+//   ส่งแบบ volatile: client ที่เน็ตช้ารับไม่ทัน = ทิ้งภาพนั้น ไม่เข้าคิว (ไม่งั้นภาพเก่าสะสม หน่วงขึ้นเรื่อยๆ)
 //
 // "คนในห้องตอนนี้" (currentPeople) = คนที่กล้องเห็นในโซนตอนนี้ (Pi ส่ง median ของ 2 วินาทีล่าสุด)
 // ไม่ใช่ เข้า − ออก: ค่านั้นเปลี่ยนเฉพาะตอนมีคนข้ามเส้น และถ้านับพลาดครั้งเดียวจะผิดไปทั้งวัน
@@ -15,10 +18,22 @@ import { buildToday } from "./routes/today.js";
 import { buildStatus } from "./routes/status.js";
 import { buildEvents } from "./routes/events.js";
 import { buildCompare } from "./routes/compare.js";
-import { getMqttState, onLive } from "./mqtt.js";
+import { getMqttState, onFrame, onLive } from "./mqtt.js";
 
 // ค่าสดเก่ากว่านี้ = ตัวนับหยุดไปแล้ว → คนตอนนี้ = null, ยอดอื่นใช้ค่าจาก CSV
 const LIVE_MAX_AGE_MS = 10_000;
+// เหตุการณ์ล่าสุดที่ส่งไปกับ sync (ทั้งวันอาจเป็นหลักร้อย: "นอกเวลาทำการ" เกิดได้ทุกนาที) — GET /api/events ยังได้ครบ
+const SYNC_EVENTS = 50;
+
+/** ผลการตรวจจับตอนนี้ของโมเดล (ตัวนับรุ่นเก่าที่ยังไม่ส่งค่าเหล่านี้ → null) */
+function detectionOf(live) {
+  return {
+    people: live.people ?? null,
+    conf: live.conf ?? null,
+    fps: live.fps ?? null,
+    model: live.model ?? null,
+  };
+}
 
 /** ใส่ค่าสดลงในข้อมูลวันนี้ */
 function applyLive(today, live) {
@@ -30,19 +45,24 @@ function applyLive(today, live) {
     currentPeople: live.in_zone,
     maxInRoom: Math.max(today.maxInRoom, live.in_zone ?? 0),
     liveTime: live.time,
+    detection: detectionOf(live),
   };
 }
 
+// sync ไปทุก client ทุก 3 วินาที (หลัง deploy วิ่งออกจากเน็ตของ Pi) → ส่งเฉพาะที่ dashboard ใช้:
+// ไม่ส่ง today.minuteRows (ทั้งวัน ~300 KB, dashboard ใช้แค่ hourlyBars / lastRow) และเหตุการณ์แค่ SYNC_EVENTS รายการล่าสุด
 function buildSync() {
   const { live, liveAt, status } = getMqttState();
-  const today = buildToday();
+  const today = buildToday(); // object ใหม่ทุกครั้ง: ลบ field ได้เลย
+  delete today.minuteRows;
+  const events = buildEvents();
   return {
     today:
       live && status !== "offline" && Date.now() - liveAt < LIVE_MAX_AGE_MS
         ? applyLive(today, live)
-        : { ...today, currentPeople: null, liveTime: null },
+        : { ...today, currentPeople: null, liveTime: null, detection: null },
     status: buildStatus(),
-    events: buildEvents(),
+    events: { ...events, events: events.events.slice(0, SYNC_EVENTS) },
     compare: buildCompare(),
     timestamp: new Date().toISOString(),
   };
@@ -51,7 +71,7 @@ function buildSync() {
 /**
  * เริ่ม Socket.IO บน http server เดียวกับ Express
  * @param {import('http').Server} httpServer
- * @param {string} origin — URL ของ dashboard (CORS)
+ * @param {string[]} origin — URL ของ dashboard (CORS)
  * @param {number} seconds — ส่ง sync ทุกกี่วินาที
  */
 export function startSocket(httpServer, origin, seconds) {
@@ -68,6 +88,8 @@ export function startSocket(httpServer, origin, seconds) {
   io.on("connection", (socket) => {
     console.log("[Socket] Client connected, total:", io.engine.clientsCount);
     send(socket);
+    const { frame, frameAt } = getMqttState();
+    if (frame && Date.now() - frameAt < LIVE_MAX_AGE_MS) socket.emit("frame", frame);
     socket.on("disconnect", () => {
       console.log("[Socket] Client disconnected, total:", io.engine.clientsCount);
     });
@@ -77,7 +99,8 @@ export function startSocket(httpServer, origin, seconds) {
     if (io.engine.clientsCount > 0) send(io);
   }, seconds * 1000);
 
-  onLive((live) => io.emit("live", { time: live.time, in_zone: live.in_zone }));
+  onLive((live) => io.emit("live", { time: live.time, in_zone: live.in_zone, detection: detectionOf(live) }));
+  onFrame((jpeg) => io.volatile.emit("frame", jpeg));
 
   return io;
 }

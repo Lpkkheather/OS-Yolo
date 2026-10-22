@@ -19,6 +19,9 @@ metrics/
 zones.json
 *_preview.jpg
 
+# secrets: the Supabase URL + secret key (template: .env.example)
+.env
+
 # personal work notes
 PLAN.md
 

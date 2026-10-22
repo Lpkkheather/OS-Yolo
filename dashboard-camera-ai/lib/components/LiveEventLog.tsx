@@ -28,7 +28,7 @@ export function LiveEventLog({ data }: { data: { date: string; events: EventItem
           )}
           {!loading && data.events.length === 0 && (
             <p className="text-gray-600 text-sm text-center pt-10">
-              ไม่มีเหตุการณ์วันนี้
+              ไม่มีเหตุการณ์ในวันนี้
             </p>
           )}
           {data?.events.map((ev, i) => (

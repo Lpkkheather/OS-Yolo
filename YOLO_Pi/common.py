@@ -5,8 +5,11 @@ Training happens in ~/Documents/YOLO on the Mac; this folder runs and evaluates 
 """
 
 import csv
+import os
 import socket
+import sys
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
@@ -61,6 +64,19 @@ def host() -> str:
     return socket.gethostname().split(".")[0]
 
 
+def load_env() -> dict[str, str]:
+    """Settings in YOLO_Pi/.env (KEY=VALUE lines, # = comment), e.g. SUPABASE_URL + SUPABASE_SECRET_KEY.
+    The file stays on this machine (.gitignore: never on GitHub). A variable set in the shell wins over the file."""
+    path = ROOT / ".env"
+    values = {}
+    if path.is_file():
+        for line in path.read_text().splitlines():
+            key, sep, value = line.partition("=")
+            if sep and not key.strip().startswith("#"):
+                values[key.strip()] = value.strip().strip("\"'")
+    return values | {k: v for k, v in os.environ.items() if k in values or k.startswith("SUPABASE_")}
+
+
 def cpu_temp() -> str:
     """CPU temperature in °C on a Raspberry Pi ('' elsewhere) — the Pi 5 slows itself down when hot."""
     zone = Path("/sys/class/thermal/thermal_zone0/temp")
@@ -107,8 +123,54 @@ def picamera_frames(width: int, height: int, timeout: float = 10.0):
         cam.close()
 
 
+VIDEO4LINUX = Path("/sys/class/video4linux")  # Linux: one entry per /dev/video<N>
+# what to check when a webcam cannot be read: macOS asks for permission; on Linux (the Pi) it is the cable / number
+WEBCAM_HINT = ("allow camera access for this app (macOS: System Settings > Privacy & Security > Camera), then reopen "
+               "the app" if sys.platform == "darwin" else
+               "check the USB cable; 'ls -l /dev/v4l/by-id/' lists the webcams (the number after 'video' = --source)")
+
+
+def usb_webcam_index(devices: Path = VIDEO4LINUX) -> int | None:
+    """The /dev/video<N> number of the first USB webcam (Linux); None if none is plugged in, or not Linux.
+    Not simply 0: on a Pi 5 the Pi's own video devices (camera port, image processor) come first, so a webcam is often
+    /dev/video8 or higher. A webcam = a device on the USB bus with index 0 (its picture; index 1 = its metadata)."""
+    found = []
+    for dev in devices.glob("video*"):
+        try:
+            usb = ((dev / "device" / "subsystem").resolve().name == "usb"
+                   or "/usb" in str((dev / "device").resolve()))
+            if usb and (dev / "index").read_text().strip() == "0":
+                found.append(int(dev.name.removeprefix("video")))
+        except (OSError, ValueError):
+            continue
+    return min(found) if found else None
+
+
 def default_source() -> str:
-    return "picamera" if has_picamera() else "0"  # Pi camera on the Pi, first webcam elsewhere
+    """The camera when --source is not given: a USB webcam if one is plugged in, else the Pi camera on the ribbon
+    cable (a Raspberry Pi with picamera2), else webcam 0 (the Mac's own camera). Looked up at every start, so the
+    service finds the webcam again after it was unplugged or moved to another USB port (= another number)."""
+    usb = usb_webcam_index()
+    if usb is not None:
+        return str(usb)
+    return "picamera" if has_picamera() else "0"
+
+
+class PictureWatch:
+    """A live webcam that stops sending pictures (unplugged, USB reset): Ultralytics then hands out black frames and
+    keeps reopening the same /dev/video number, which a replugged webcam may no longer have. After `seconds` of only
+    black frames -> RuntimeError, like picamera_frames: the counting stops, systemd starts it again and
+    default_source() finds the webcam afresh."""
+
+    def __init__(self, seconds: float = 10.0):
+        self.seconds = seconds
+        self.last = time.time()  # last frame with a picture
+
+    def check(self, picture: np.ndarray, now: float) -> None:
+        if picture.any():  # a real picture is never all zeros, even in the dark (sensor noise)
+            self.last = now
+        elif now - self.last >= self.seconds:
+            raise RuntimeError(f"no picture from the webcam for {self.seconds:.0f} s (unplugged or reset?)")
 
 
 def open_webcam(index: int, seconds: float = 10.0, hint: str = ""):
@@ -131,13 +193,14 @@ def open_webcam(index: int, seconds: float = 10.0, hint: str = ""):
         raise SystemExit(
             f"webcam {index} did not answer within {seconds:.0f} s. Usually:\n"
             "  - another program still uses the camera: a window of bash run.sh 3 / 4 left open in another terminal\n"
-            "    tab (close it: Esc or q, or Ctrl+C in that tab), or a video-call app\n"
-            "  - macOS is asking for camera permission: allow it in System Settings > Privacy & Security > Camera"
+            "    tab (close it: Esc or q, or Ctrl+C in that tab), the counting service (bash run.sh service stop),\n"
+            "    or a video-call app"
+            + ("\n  - macOS is asking for camera permission: allow it in System Settings > Privacy & Security > Camera"
+               if sys.platform == "darwin" else "")
             + (f"\n  - {hint}" if hint else ""))
     if not box["ok"]:
         box["cap"].release()
-        raise SystemExit(f"cannot read webcam {index}: allow camera access for this app "
-                         "(macOS: System Settings > Privacy & Security > Camera), then reopen the app")
+        raise SystemExit(f"cannot read webcam {index}: {WEBCAM_HINT}")
     return box["cap"]
 
 

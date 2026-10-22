@@ -13,6 +13,10 @@ Every minute one row goes to data/<date>.csv (live camera) or data/test_<clip>.c
 record is published (retained) to pi5/people/count. The service also reports online / offline on pi5/status/people.
 Between the minutes, every second, pi5/people/live gets the counts right now (people in the zone, today's totals so
 far) so the dashboard does not wait up to a minute; these are not stored (the minutes in the CSV are the history).
+Every second pi5/people/frame also gets the picture with the model's boxes, line and zone (a small JPEG) for the
+dashboard card "การตรวจจับของโมเดล" (3_camera.py --frames off = not sent).
+With SUPABASE_URL + SUPABASE_SECRET_KEY in YOLO_Pi/.env each minute of the live camera is also stored in the Supabase
+table minute_counts (supabase/schema.sql), so the dashboard can run anywhere and the history survives the SD card.
 """
 
 from collections import deque
@@ -20,7 +24,11 @@ import csv
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
+import queue
+import threading
 import time
+import urllib.error
+import urllib.request
 
 import cv2
 import numpy as np
@@ -39,6 +47,15 @@ MQTT_TOPIC, STATUS_TOPIC, LIVE_TOPIC = "pi5/people/count", "pi5/status/people", 
 LIVE_SECONDS = 1.0  # how often the counts right now go to LIVE_TOPIC
 LIVE_WINDOW = 2.0  # "people in the zone now" = median of the frames of the last N seconds: one missed or false box
 #                     does not make the number jump, a real change shows after ~1 s
+FRAME_TOPIC = "pi5/people/frame"
+# the picture for the dashboard: 5 per second, 480 px wide (~10 KB each: about 50 KB/s, also through Tailscale Funnel)
+FRAME_SECONDS, FRAME_WIDTH, FRAME_QUALITY = 0.2, 480, 60
+#   JPEG (~30-60 KB); drawing + encoding it once a second costs the counting almost nothing
+SUPABASE_TABLE = "minute_counts"
+SUPABASE_RETRY = 60.0  # seconds between tries while Supabase cannot be reached
+SUPABASE_KEEP = 1440  # minutes kept in memory while offline (1 day); older ones are still in data/*.csv
+INT_FIELDS = ("seconds", "in", "out", "in_zone_max", "visitors", "in_today", "out_today", "visitors_today")
+FLOAT_FIELDS = ("in_zone_avg", "fps", "cpu_temp_c")
 
 
 def parse_points(text: str, name: str) -> list[list[float]]:
@@ -177,9 +194,10 @@ class MinuteLog:
     time = start of the minute, seconds = how much of that minute was counted (< 60 for the first / last minute).
     """
 
-    def __init__(self, zones: dict, model: str, clip: str | None, video_fps: float, mqtt=None):
+    def __init__(self, zones: dict, model: str, clip: str | None, video_fps: float, mqtt=None, cloud=None):
         self.has_line = bool(zones.get("line"))
         self.camera, self.model, self.clip, self.video_fps, self.mqtt = zones["camera"], model, clip, video_fps, mqtt
+        self.cloud = cloud  # SupabaseOut (live camera only)
         self.start = datetime.now().astimezone().replace(second=0, microsecond=0)
         self.bucket = self.day = None
         self.totals = {}
@@ -277,6 +295,8 @@ class MinuteLog:
             writer.writerow(row)
         if self.mqtt is not None:
             self.mqtt.publish(row)
+        if self.cloud is not None:
+            self.cloud.send(row)
         return row
 
 
@@ -321,6 +341,10 @@ class MqttOut:
         useless, and a new dashboard gets one within a second anyway."""
         self.client.publish(LIVE_TOPIC, json.dumps(now, ensure_ascii=False), qos=0, retain=False)
 
+    def publish_frame(self, jpeg: bytes) -> None:
+        """The picture with the model's boxes (frame_jpeg) to FRAME_TOPIC: QoS 0, not retained, like the live counts."""
+        self.client.publish(FRAME_TOPIC, jpeg, qos=0, retain=False)
+
     def close(self) -> None:
         """Say "offline" ourselves (the Last Will only fires when the connection drops unexpectedly)."""
         info = self.client.publish(STATUS_TOPIC, "offline", qos=1, retain=True)
@@ -330,3 +354,91 @@ class MqttOut:
             pass
         self.client.disconnect()
         self.client.loop_stop()
+
+
+def frame_jpeg(picture: np.ndarray, width: int = FRAME_WIDTH, quality: int = FRAME_QUALITY) -> bytes:
+    """The annotated picture made small for MQTT: at most `width` px wide, JPEG ('' if encoding fails)."""
+    h, w = picture.shape[:2]
+    if w > width:
+        picture = cv2.resize(picture, (width, round(h * width / w)), interpolation=cv2.INTER_AREA)
+    ok, buf = cv2.imencode(".jpg", picture, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return buf.tobytes() if ok else b""
+
+
+def csv_minute(r: dict) -> dict:
+    """A row read back from data/*.csv (all text) -> the same values MinuteLog.flush wrote ('' = None)."""
+    row = {k: r.get(k) or None for k in FIELDS}
+    for k in INT_FIELDS:
+        row[k] = int(float(row[k])) if row[k] is not None else None
+    for k in FLOAT_FIELDS:
+        row[k] = float(row[k]) if row[k] is not None else None
+    return row
+
+
+def supabase_row(row: dict) -> dict:
+    """A minute row -> a row of the table minute_counts: "in" / "out" are SQL keywords there -> in_count / out_count."""
+    out = {k: v for k, v in row.items() if k not in ("in", "out")}
+    out["in_count"], out["out_count"] = row.get("in"), row.get("out")
+    return out
+
+
+def post_rows(url: str, key: str, rows: list[dict], timeout: float = 15) -> None:
+    """Upsert rows into minute_counts (a minute that is already there is updated, never stored twice).
+    The key goes in the apikey header; only the older JWT keys (eyJ...) also go in Authorization."""
+    headers = {"apikey": key, "Content-Type": "application/json",
+               "Prefer": "resolution=merge-duplicates,return=minimal"}
+    if key.startswith("eyJ"):
+        headers["Authorization"] = f"Bearer {key}"
+    request = urllib.request.Request(f"{url.rstrip('/')}/rest/v1/{SUPABASE_TABLE}?on_conflict=camera,time",
+                                     data=json.dumps(rows).encode(), headers=headers, method="POST")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        response.read()
+
+
+class SupabaseOut:
+    """Stores each minute in Supabase (table minute_counts, supabase/schema.sql). Runs in its own thread: a slow or
+    missing internet never slows the counting. Minutes that could not be sent wait in memory and go with the next
+    try; they are always in data/*.csv too (bash run.sh upload sends those)."""
+
+    def __init__(self, url: str, key: str):
+        self.url, self.key = url.rstrip("/"), key
+        self.queue: queue.Queue = queue.Queue()
+        self.thread = threading.Thread(target=self._run, name="supabase", daemon=True)
+        self.thread.start()
+        print(f"Supabase: {self.url}  table {SUPABASE_TABLE} (every minute)")
+
+    def send(self, row: dict) -> None:
+        self.queue.put(supabase_row(row))
+
+    def _run(self) -> None:
+        waiting, failing, stop = [], False, False
+        while not stop:
+            try:
+                item = self.queue.get(timeout=SUPABASE_RETRY if waiting else None)
+                while True:  # take every minute that is queued, send them together
+                    if item is None:
+                        stop = True
+                    else:
+                        waiting.append(item)
+                    item = self.queue.get_nowait()
+            except queue.Empty:
+                pass
+            if not waiting:
+                continue
+            del waiting[:-SUPABASE_KEEP]
+            try:
+                post_rows(self.url, self.key, waiting)
+                if failing:
+                    print(f"Supabase: sent again ({len(waiting)} minutes)", flush=True)
+                waiting, failing = [], False
+            except (OSError, ValueError) as e:  # URLError / HTTPError / timeout are OSErrors
+                if not failing:
+                    detail = e.read().decode(errors="replace")[:200] if isinstance(e, urllib.error.HTTPError) else ""
+                    print(f"Supabase: cannot store minutes ({e} {detail}) - retrying every {SUPABASE_RETRY:g} s; "
+                          "they are in data/*.csv too (bash run.sh upload)", flush=True)
+                    failing = True
+
+    def close(self, timeout: float = 10) -> None:
+        """Send what is left (the last, partial minute) before the program ends."""
+        self.queue.put(None)
+        self.thread.join(timeout)

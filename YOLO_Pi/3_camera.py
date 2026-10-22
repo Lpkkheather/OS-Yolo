@@ -1,7 +1,8 @@
 """Step 3 — run a model on the camera (live) or a recorded clip: detect + track people, RECORD how well it did, and
 (with --zones) COUNT the people in the area.
 
-Sources: Pi camera (default on the Pi), webcam 0 (default elsewhere), a clip from 2_record_clip.py, rtsp:// or tcp://.
+Sources: a USB webcam if one is plugged in (found by itself, also on a Pi), else the Pi camera, else webcam 0;
+a clip from 2_record_clip.py, rtsp:// or tcp://.
 Every run is logged (numbers only, no pictures unless --save-video):
     metrics/<machine>/camera/<run>/frames.csv   one row per frame: people, confidence, ms, CPU temp (not with
                                                 --no-frame-log, which the 24/7 service uses)
@@ -12,6 +13,9 @@ Counting (--zones = zones.json from 4_set_zones.py, or --line / --zone):
     data/test_<clip>.csv     the same for a clip (minutes of video time), never mixed with the live data
     MQTT pi5/people/count    the same row every minute (with --mqtt), online / offline on pi5/status/people
     MQTT pi5/people/live     every second: people in the zone now + today's totals so far (not stored)
+                             + people in the frame, their mean score, fps and model (dashboard "การตรวจจับของโมเดล")
+    MQTT pi5/people/frame    5 times a second: the picture with the model's boxes, line and zone (--frames off = none)
+    Supabase minute_counts   the same row every minute (live camera, when YOLO_Pi/.env has the Supabase settings)
 A live camera has no labels, so detection accuracy is measured by 1_eval.py. For a clip, count yourself and pass
 --true-count (different people) or --true-in / --true-out (line crossings): the summary shows the error.
 
@@ -36,10 +40,10 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-from common import (METRICS, MODEL_NAMES, PERSON, RESULTS, ROOT, cpu_temp, default_source, host, picamera_frames,
-                    pick_model, write_csv)
-from counting import (LINE_BGR, LIVE_SECONDS, ZONES_FILE, AreaCounter, MinuteLog, MqttOut, anchor_points,
-                      draw_counts, draw_zones, make_zones)
+from common import (METRICS, MODEL_NAMES, PERSON, RESULTS, ROOT, WEBCAM_HINT, PictureWatch, cpu_temp,
+                    default_source, host, load_env, picamera_frames, pick_model, write_csv)
+from counting import (FRAME_SECONDS, LINE_BGR, LIVE_SECONDS, ZONES_FILE, AreaCounter, MinuteLog, MqttOut,
+                      SupabaseOut, anchor_points, draw_counts, draw_zones, frame_jpeg, make_zones)
 
 GOLD_BGR = (76, 168, 201)
 TRACK_CONF = 0.1  # Ultralytics' tracking default: low-score boxes keep tracks of partly hidden people alive
@@ -238,6 +242,12 @@ def main():
                        help="publish every minute to this MQTT broker (default localhost; off = no MQTT)")
     count.add_argument("--mqtt-port", type=int, default=1883)
     count.add_argument("--mqtt-topic", default="pi5/people/count")
+    count.add_argument("--frames", choices=("on", "off"), default="on",
+                       help="with --mqtt: send the picture with the boxes to pi5/people/frame 5 times a second "
+                            "(dashboard card; off = a little less CPU)")
+    count.add_argument("--supabase", choices=("on", "off"), default="on",
+                       help="store every minute in Supabase when YOLO_Pi/.env has SUPABASE_URL + SUPABASE_SECRET_KEY "
+                            "(live camera only, never a clip)")
     args = ap.parse_args()
 
     weights = pick_model(args.model, args.imgsz)
@@ -265,6 +275,13 @@ def main():
         except Exception as e:  # e.g. paho-mqtt not installed: keep counting, the minutes are still in data/*.csv
             print(f"WARNING: MQTT is off ({type(e).__name__}: {e}) - counting continues into data/*.csv"
                   + ("\n         install it: bash run.sh setup" if isinstance(e, ImportError) else ""))
+    cloud = None
+    env = load_env()
+    if zones and args.supabase == "on" and env.get("SUPABASE_URL") and env.get("SUPABASE_SECRET_KEY"):
+        if Path(source).is_file():  # a clip's minutes are video time, not real days: they stay in data/test_*.csv
+            print("Supabase: off for a clip (only the live camera's minutes are stored)")
+        else:
+            cloud = SupabaseOut(env["SUPABASE_URL"], env["SUPABASE_SECRET_KEY"])
 
     model = YOLO(weights, task="detect")
     track = dict(classes=[PERSON], conf=args.conf, imgsz=args.imgsz, tracker="bytetrack.yaml", verbose=False)
@@ -276,8 +293,9 @@ def main():
 
     stats = RunStats()
     counter = AreaCounter(zones) if zones else None
-    minutes = MinuteLog(zones, weights.name.replace("_ncnn_model", ""), source_name if Path(source).is_file() else None,
-                        clip_fps(source), mqtt) if zones else None
+    model_name = weights.name.replace("_ncnn_model", "")
+    minutes = MinuteLog(zones, model_name, source_name if Path(source).is_file() else None,
+                        clip_fps(source), mqtt, cloud) if zones else None
     frame_file = frame_log = writer = None
     if not args.no_frame_log:
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -288,7 +306,10 @@ def main():
         frame_log.writeheader()
     signal.signal(signal.SIGTERM, stop)
     start = last = time.time()
-    last_live = 0.0
+    last_live = last_frame = 0.0
+    live_frames = 0  # stats.frames at the last live message: fps right now = frames since then / seconds since then
+    send_frames = mqtt is not None and args.frames == "on"
+    watch = PictureWatch() if source.isdigit() else None  # webcam unplugged -> stop, systemd restarts + finds it
     try:
         for r in results:
             # only tracked boxes are people: when ByteTrack has no track yet, Ultralytics returns the raw boxes
@@ -298,6 +319,8 @@ def main():
             conf = r.boxes.conf.tolist() if tracked else []
             xyxy = r.boxes.xyxy.cpu().numpy() if tracked else np.zeros((0, 4))
             now = time.time()
+            if watch:
+                watch.check(r.orig_img, now)
             temp = cpu_temp() if stats.frames % 30 == 0 else ""
             ms = r.speed["preprocess"] + r.speed["inference"] + r.speed["postprocess"]
             counts = None
@@ -313,8 +336,11 @@ def main():
                 if row:
                     show_minute(row)
                 if mqtt is not None and now - last_live >= LIVE_SECONDS:
-                    mqtt.publish_live(minutes.live(stats.frames))
-                    last_live = now
+                    fps = (stats.frames - live_frames) / (now - last_live) if last_live else stats.frames / (now - start)
+                    mqtt.publish_live(minutes.live(stats.frames) | {
+                        "people": len(ids), "conf": round(sum(conf) / len(conf), 2) if conf else None,
+                        "fps": round(fps, 1), "model": model_name})
+                    last_live, live_frames = now, stats.frames
             stats.add(ids, conf, ms, temp, counts)
             if frame_log:
                 frame_log.writerow({"frame": stats.frames, "time_s": round(now - start, 2), "people": len(ids),
@@ -333,7 +359,8 @@ def main():
                       + (f"  CPU {stats.temp_max} °C" if stats.temp_max else ""), flush=True)
                 last = now
 
-            if not args.no_show or args.save_video:
+            frame_due = send_frames and now - last_frame >= FRAME_SECONDS
+            if not args.no_show or args.save_video or frame_due:
                 picture = r.plot(img=draw_zones(r.orig_img.copy(), zones) if zones else None)
                 text = f"people: {len(ids)}   unique: {stats.unique_so_far()}"
                 (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)
@@ -345,6 +372,9 @@ def main():
                         cv2.circle(picture, (int(x), int(y)), 6, LINE_BGR, -1)
                     labels = {"IN": stats.counts["in"], "OUT": stats.counts["out"]} if zones.get("line") else {}
                     draw_counts(picture, labels | {"zone": counts["in_zone"], "visitors": stats.counts["visitors"]})
+                if frame_due:
+                    mqtt.publish_frame(frame_jpeg(picture))
+                    last_frame = now
                 if args.save_video:
                     if writer is None:
                         out = RESULTS / host() / "camera" / f"{run_name}.mp4"
@@ -363,8 +393,7 @@ def main():
     except (ConnectionError, RuntimeError) as e:
         hint = ("Pi camera: check the ribbon cable and test it with 'rpicam-hello'; if it is busy, another program "
                 "uses it (the counting service? bash run.sh service stop)" if source == "picamera" else
-                "webcam: allow camera access for this app (macOS: System Settings > Privacy & Security > Camera)"
-                if source.isdigit() else "check the file path / stream URL")
+                f"webcam: {WEBCAM_HINT}" if source.isdigit() else "check the file path / stream URL")
         raise SystemExit(f"cannot read source '{source}': {e}\n{hint}")
     finally:
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
@@ -374,6 +403,8 @@ def main():
                 show_minute(row)
         if mqtt is not None:
             mqtt.close()
+        if cloud is not None:
+            cloud.close()
         if frame_file is not None:
             frame_file.close()
         if writer is not None:
