@@ -1,18 +1,26 @@
 // ============================================================
 // mqtt.js — จัดการ MQTT subscriber
-// subscribe: pi5/status/people, pi5/people/count
+// subscribe: pi5/status/people, pi5/people/count (ทุกนาที), pi5/people/live (ทุกวินาที)
 // ถ้า MQTT_BROKER_URL ว่าง → ข้ามการเชื่อมต่อ
 // ============================================================
 import mqtt from "mqtt";
-import { broadcastMqttUpdate } from "./sse.js";
+import { broadcastMqttUpdate, broadcastLiveUpdate } from "./sse.js";
 
-/** @type {{ status: 'online'|'offline'|'unknown', lastCount: object|null }} */
+/** @type {{ status: 'online'|'offline'|'unknown', lastCount: object|null, live: object|null, liveAt: number }} */
 let state = {
   status: "unknown",
   lastCount: null,
+  live: null, // ข้อความล่าสุดจาก pi5/people/live
+  liveAt: 0, // เวลาที่ได้รับ (ms) — socket sync ใช้เช็กว่ายังสดอยู่ไหม
 };
 
 let client = null;
+const liveListeners = []; // เรียกทุกครั้งที่ได้ pi5/people/live (socket.js ส่งต่อให้ dashboard ทันที)
+
+/** ลงทะเบียนฟังก์ชันที่จะถูกเรียกเมื่อได้ค่าสดใหม่ */
+export function onLive(fn) {
+  liveListeners.push(fn);
+}
 
 /**
  * เริ่มต้น MQTT subscriber
@@ -34,7 +42,7 @@ export function startMqtt(brokerUrl) {
 
   client.on("connect", () => {
     console.log("[MQTT] เชื่อมต่อสำเร็จ");
-    client.subscribe(["pi5/status/people", "pi5/people/count"], (err) => {
+    client.subscribe(["pi5/status/people", "pi5/people/count", "pi5/people/live"], (err) => {
       if (err) console.error("[MQTT] subscribe error:", err.message);
     });
   });
@@ -56,6 +64,18 @@ export function startMqtt(brokerUrl) {
         console.warn("[MQTT] parse error บน pi5/people/count:", text);
       }
     }
+
+    // ค่าตอนนี้ (คนในโซน + ยอดวันนี้ถึงวินาทีนี้) — ไม่เก็บลง CSV แค่ส่งต่อให้ dashboard
+    if (topic === "pi5/people/live") {
+      try {
+        state.live = JSON.parse(text);
+        state.liveAt = Date.now();
+        broadcastLiveUpdate(state.live);
+        liveListeners.forEach((fn) => fn(state.live));
+      } catch {
+        console.warn("[MQTT] parse error บน pi5/people/live:", text);
+      }
+    }
   });
 
   client.on("error", (err) => {
@@ -71,7 +91,7 @@ export function startMqtt(brokerUrl) {
 
 /**
  * คืนสถานะ MQTT ปัจจุบัน
- * @returns {{ status: 'online'|'offline'|'unknown', lastCount: object|null }}
+ * @returns {{ status: 'online'|'offline'|'unknown', lastCount: object|null, live: object|null, liveAt: number }}
  */
 export function getMqttState() {
   return state;

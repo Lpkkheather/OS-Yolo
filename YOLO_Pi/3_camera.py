@@ -11,6 +11,7 @@ Counting (--zones = zones.json from 4_set_zones.py, or --line / --zone):
     data/<date>.csv          one row per minute: in / out across the line, people in the zone, new visitors
     data/test_<clip>.csv     the same for a clip (minutes of video time), never mixed with the live data
     MQTT pi5/people/count    the same row every minute (with --mqtt), online / offline on pi5/status/people
+    MQTT pi5/people/live     every second: people in the zone now + today's totals so far (not stored)
 A live camera has no labels, so detection accuracy is measured by 1_eval.py. For a clip, count yourself and pass
 --true-count (different people) or --true-in / --true-out (line crossings): the summary shows the error.
 
@@ -37,8 +38,8 @@ from ultralytics import YOLO
 
 from common import (METRICS, MODEL_NAMES, PERSON, RESULTS, ROOT, cpu_temp, default_source, host, picamera_frames,
                     pick_model, write_csv)
-from counting import (LINE_BGR, ZONES_FILE, AreaCounter, MinuteLog, MqttOut, anchor_points, draw_counts,
-                      draw_zones, make_zones)
+from counting import (LINE_BGR, LIVE_SECONDS, ZONES_FILE, AreaCounter, MinuteLog, MqttOut, anchor_points,
+                      draw_counts, draw_zones, make_zones)
 
 GOLD_BGR = (76, 168, 201)
 TRACK_CONF = 0.1  # Ultralytics' tracking default: low-score boxes keep tracks of partly hidden people alive
@@ -287,6 +288,7 @@ def main():
         frame_log.writeheader()
     signal.signal(signal.SIGTERM, stop)
     start = last = time.time()
+    last_live = 0.0
     try:
         for r in results:
             # only tracked boxes are people: when ByteTrack has no track yet, Ultralytics returns the raw boxes
@@ -310,6 +312,9 @@ def main():
                 row = minutes.add(stats.frames, counts)
                 if row:
                     show_minute(row)
+                if mqtt is not None and now - last_live >= LIVE_SECONDS:
+                    mqtt.publish_live(minutes.live(stats.frames))
+                    last_live = now
             stats.add(ids, conf, ms, temp, counts)
             if frame_log:
                 frame_log.writerow({"frame": stats.frames, "time_s": round(now - start, 2), "people": len(ids),

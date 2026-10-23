@@ -53,10 +53,15 @@ export function PeopleStats({ today }: PeopleStatsProps) {
         <div className="flex items-baseline gap-2">
           <span className="text-gray-500 text-2xl">ประมาณ</span>
           <span className="text-7xl font-bold text-white leading-none">
-            {today.currentPeople}
+            {today.currentPeople ?? "—"}
           </span>
           <span className="text-gray-400 text-xl">คน</span>
         </div>
+        <span className="text-gray-500 text-xs mt-2">
+          {today.liveTime
+            ? `อัปเดต ${new Date(today.liveTime).toLocaleTimeString("th-TH", { hour12: false })}`
+            : "ตัวนับไม่ได้ส่งข้อมูลสด"}
+        </span>
       </div>
 
 
