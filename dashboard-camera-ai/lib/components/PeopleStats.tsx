@@ -55,7 +55,7 @@ export function PeopleStats({ today, archived = false }: PeopleStatsProps) {
     <div className="space-y-4">
       {/* ตัวเลขหลัก — คนในห้องตอนนี้ (วันที่ผ่านมาแล้ว: ผู้มาเยือนทั้งวัน) */}
       {archived ? (
-        <div className="rounded-xl bg-[#1e1e1e] border border-[#2a2a2a] p-6 flex flex-col items-center text-center">
+        <div className="rounded-xl bg-linear-to-t from-neutral-900 to-slate-600 border border-[#2a2a2a] p-6 flex flex-col items-center text-center">
           <span className="text-gray-400 text-sm mb-1">ผู้มาเยือนทั้งวัน</span>
           <div className="flex items-baseline gap-2">
             <span className="text-7xl font-bold text-white leading-none">{today.visitorsToday ?? 0}</span>
@@ -68,7 +68,7 @@ export function PeopleStats({ today, archived = false }: PeopleStatsProps) {
           </span>
         </div>
       ) : (
-      <div className="rounded-xl bg-[#1e1e1e] border border-[#2a2a2a] p-6 flex flex-col items-center text-center">
+      <div className="rounded-xl bg-linear-to-t from-gray-700 to-zinc-900 border border-[#2a2a2a] p-6 flex flex-col items-center text-center">
         <span className="text-gray-400 text-sm mb-1">คนในห้องตอนนี้</span>
         <div className="flex items-baseline gap-2">
           <span className="text-gray-500 text-2xl">ประมาณ</span>
@@ -85,12 +85,11 @@ export function PeopleStats({ today, archived = false }: PeopleStatsProps) {
       </div>
       )}
 
-      {/* การ์ดย่อย 4 ใบ */}
-      <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-[#1e1e1e] ">
+      <div className="grid grid-cols-2 gap-3 p-4 rounded-xl  border-custom ">
         {cards.map((c) => (
           <div
             key={c.label}
-            className="rounded-xl bg-[#161616] border border-[#2a2a2a] px-4 py-4"
+            className="rounded-xl bg-[#161616] border border-[#2a2a2a]  px-4 py-4"
           >
             <p className="text-gray-400 text-xs mb-1">{c.label}</p>
             <p className={`text-2xl font-semibold ${c.color}`}>{c.value}</p>

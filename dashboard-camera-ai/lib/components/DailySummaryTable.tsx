@@ -48,20 +48,17 @@ export function DayPicker({ value, days, today, onChange }: PickerProps) {
 
 interface TableProps {
   days: DaySummary[] | null;
-  /** วันที่กำลังดู (null = วันนี้) */
   selected: string | null;
   today: string;
-  /** โหลดไม่ได้ (เช่น ยังไม่ได้ตั้งค่า Supabase บน Vercel) */
   failed: boolean;
   onSelect: (date: string | null) => void;
 }
 
 export function DailySummaryTable({ days, selected, today, failed, onSelect }: TableProps) {
   return (
-    <div className="rounded-xl bg-[#1e1e1e] border border-[#2a2a2a] overflow-hidden">
+    <div className="rounded-xl bg-[#1e1e1e] border  border-custom overflow-hidden">
       <div className="px-4 py-3 border-b border-[#2a2a2a]">
         <h3 className="text-sm font-medium text-gray-200">สรุปรายวัน (ข้อมูลที่บันทึกไว้)</h3>
-        <p className="text-xs text-gray-500 mt-0.5">กดวันที่เพื่อดู dashboard ของวันนั้น</p>
       </div>
 
       {days === null || days.length === 0 ? (

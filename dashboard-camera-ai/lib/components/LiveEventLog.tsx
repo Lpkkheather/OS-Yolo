@@ -15,7 +15,7 @@ export function LiveEventLog({ data }: { data: { date: string; events: EventItem
   const loading = data === null;
 
   return (
-    <Card>
+    <Card className="border-custom">
       <CardHeader>
         <CardTitle>เหตุการณ์</CardTitle>
       </CardHeader>

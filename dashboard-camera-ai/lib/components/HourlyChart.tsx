@@ -69,9 +69,7 @@ export function HourlyChart({ bars }: Props) {
             tickLine={false}
           />
           <Tooltip
-            // ค่าเริ่มต้นของ recharts เป็นแถบ #ccc สว่างจ้าบนการ์ดสีเข้ม
             cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
-            // ชั่วโมงที่ขาดยังแสดงใน tooltip (ไม่งั้นขึ้นแค่เวลาเปล่า ๆ)
             filterNull={false}
             formatter={(value) => value ?? "ไม่มีข้อมูล"}
             contentStyle={{

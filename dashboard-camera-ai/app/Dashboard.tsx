@@ -127,7 +127,6 @@ export function Dashboard() {
     <DailySummaryTable days={days} selected={day} today={todayDate} failed={daysFailed} onSelect={setDay} />
   );
 
-  // การ์ดขึ้นทันทีเสมอ (ไม่รอ fetch): ถ้า Pi ปิดอยู่ fetch จะค้างจนหมดเวลา → แต่ละการ์ดแสดง "—" / ข้อความว่างแทน
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
       <div className="flex flex-wrap items-stretch gap-3">
@@ -136,6 +135,9 @@ export function Dashboard() {
         </div>
         <DayPicker value={day} days={days} today={todayDate} onChange={setDay} />
       </div>
+
+
+
 
       {archived ? (
         <>
@@ -169,8 +171,8 @@ export function Dashboard() {
             </Suspense>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2 min-h-[280px]">{chart}</div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 ">
+            <div className="lg:col-span-2 min-h-[280px] border-custom">{chart}</div>
             <Suspense>
               <CompareCard data={compare} />
             </Suspense>

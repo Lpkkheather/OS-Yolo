@@ -36,7 +36,7 @@ export function CompareCard({ data: compareData, archived = false }: { data: Com
   ];
 
   return (
-    <Card className="bg-[#1e1e1e] border-[#2a2a2a]">
+    <Card className="bg-[#1e1e1e] border-[#2a2a2a] border-custom">
       <CardHeader>
         <CardTitle className="font-bold text-gray-200">
           เทียบกับวันอื่น
@@ -75,9 +75,10 @@ export function CompareCard({ data: compareData, archived = false }: { data: Com
 
         {compareData.daysWithData === 0 && (
           <p className="text-xs text-gray-500 mt-4">
-            ยังไม่มีข้อมูลของ 7 วันก่อน — ช่องเทียบจะมีตัวเลขเมื่อตัวนับเก็บข้อมูลไว้แล้วอย่างน้อย 1 วัน
+            ยังไม่มีข้อมูลของ 7 วันก่อน 
           </p>
         )}
+        {/* — ช่องเทียบจะมีตัวเลขเมื่อตัวนับเก็บข้อมูลไว้แล้วอย่างน้อย 1 วัน */}
       </CardContent>
     </Card>
   );
