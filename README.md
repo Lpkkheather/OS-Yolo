@@ -453,7 +453,7 @@ cd ~/YOLO_Pi && bash run.sh backend restart
 ## 15. ข้อจำกัด
 
 **Raspberry Pi 5**
-- มี GPU (VideoCore VII, Vulkan 1.2) แต่ไม่ได้ใช้: Ultralytics รัน NCNN บน CPU 4 คอร์ (Cortex-A76) เว้นแต่สั่ง `device="vulkan:0"` (ยังไม่ได้ทดสอบ) · ไม่มี NPU (ต้องซื้อ AI HAT+ เพิ่ม)
+- มี GPU (VideoCore VII, Vulkan 1.3) แต่ไม่ได้ใช้: Ultralytics รัน NCNN บน CPU 4 คอร์ (Cortex-A76) เว้นแต่สั่ง `device="vulkan:0"` (ยังไม่ได้ทดสอบ) · ไม่มี NPU (ต้องซื้อ AI HAT+ เพิ่ม)
 - yolo26n_trained 320 ได้ 24-27 FPS · ขนาด 640 ช้ากว่ามาก (ยังไม่ได้วัดบนบอร์ด)
 - ร้อนสุดที่วัดได้ 72.7 °C · เกิน 80 °C บอร์ดลดความเร็วเอง → FPS ตก ต้องมีพัดลม/ฮีตซิงก์
 - ประมวลผลได้กล้อง 1 ตัว (1 ห้อง)
