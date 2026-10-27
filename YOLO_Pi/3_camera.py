@@ -32,6 +32,7 @@ Frames are only displayed; video is saved only with --save-video (people must ag
 import argparse
 import csv
 import json
+import os
 import signal
 import time
 from collections import Counter, deque
@@ -42,8 +43,8 @@ import numpy as np
 from ultralytics import YOLO
 
 from common import (METRICS, MODEL_NAMES, PERSON, RESULTS, ROOT, WEBCAM_HINT, PictureWatch, cpu_temp,
-                    default_source, host, load_env, picamera_frames, pick_model, write_csv)
-from counting import (COUNT_CONF, FRAME_SECONDS, LINE_BGR, LIVE_SECONDS, ZONES_FILE, AreaCounter, MinuteLog,
+                    default_source, host, load_env, ncnn_model, picamera_frames, pick_model, write_csv)
+from counting import (COUNT_CONF, FRAME_SECONDS, HOLD_CONF, LINE_BGR, LIVE_SECONDS, ZONES_FILE, AreaCounter, MinuteLog,
                       MqttOut, SettingsSync, SupabaseOut, anchor_points, draw_counts, draw_zones, frame_jpeg,
                       make_zones, settings_zones)
 from door import DoorFinder
@@ -179,7 +180,8 @@ MEANING = {
     "true_count": "จำนวนคนจริงในคลิป (คุณนับเอง)",
     "count_error_stable": "unique_people_stable − true_count (0 = นับถูก)",
     "count_error_all_tracks": "unique_people_all_tracks − true_count",
-    "line_in": "คนที่เดินข้ามเส้นไปทางลูกศร IN (คนละครั้ง)",
+    "line_in": "คนที่เดินข้ามเส้นไปทางลูกศร IN (คนละครั้ง) + ตัวสำรอง: คนอยู่ฝั่ง IN ในโซนนิ่ง 5 วินาที "
+               "ที่เส้นพลาดไป (ID หลุดตรงประตู / อยู่ในห้องก่อนตั้งเส้น)",
     "line_out": "คนที่เดินข้ามเส้นสวนทางลูกศร (คนละครั้ง)",
     "zone_avg": "จำนวนคนในโซนเฉลี่ยต่อเฟรม (ไม่ได้กำหนดโซน = ทั้งภาพ)",
     "zone_max": "จำนวนคนในโซนมากที่สุดในเฟรมเดียว",
@@ -258,6 +260,9 @@ def main():
                             "(live camera only, never a clip)")
     args = ap.parse_args()
 
+    saved = json.loads(Path(args.zones).read_text()) if args.zones and Path(args.zones).is_file() else {}
+    if saved.get("model") in MODEL_NAMES and ncnn_model(saved["model"], saved.get("imgsz")).exists():
+        args.model, args.imgsz = saved["model"], saved["imgsz"]  # chosen on the dashboard (button "ตั้งค่าการนับ")
     weights = pick_model(args.model, args.imgsz)
     source = args.source or default_source()
     source_name = Path(source).stem if Path(source).exists() else source.replace("/", "_").replace(":", "")
@@ -313,10 +318,15 @@ def main():
             if new["anchor"]:
                 zones["anchor"] = new["anchor"]
             counter.people.clear()  # sides of the old line mean nothing for the new one
-            ZONES_FILE.write_text(json.dumps({k: zones.get(k) for k in ("camera", "anchor", "band", "line", "zone")},
-                                             indent=2))
+            if new["model"]:
+                zones["model"], zones["imgsz"] = new["model"], new["imgsz"]
+            ZONES_FILE.write_text(json.dumps({k: zones.get(k) for k in ("camera", "anchor", "band", "line", "zone",
+                                                                         "model", "imgsz")}, indent=2))
             print(f"settings from the dashboard: line {'on' if zones['line'] else 'off (IN / OUT not counted)'}, "
                   f"zone {'on' if zones['zone'] else 'off (= whole picture)'}", flush=True)
+            if new["model"] and (new["model"], new["imgsz"]) != (args.model, args.imgsz):
+                print(f"model from the dashboard: {new['model']} {new['imgsz']} - restarting to load it", flush=True)
+                os.kill(os.getpid(), signal.SIGTERM)  # ends like systemctl stop; systemd (Restart=always) starts again
         SettingsSync(env["SUPABASE_URL"], env["SUPABASE_SECRET_KEY"], zones["camera"], use_settings)
     model_name = weights.name.replace("_ncnn_model", "")
     minutes = MinuteLog(zones, model_name, source_name if Path(source).is_file() else None,
@@ -326,7 +336,7 @@ def main():
         run_dir.mkdir(parents=True, exist_ok=True)
         frame_file = open(run_dir / "frames.csv", "w", newline="")
         fields = ["frame", "time_s", "people", "tracked_ids", "mean_conf", "min_conf", "ms", "cpu_temp_C"]
-        fields += ["in", "out", "in_zone", "visitors"] if zones else []
+        fields += ["in", "out", "in_zone", "in_room", "visitors"] if zones else []
         frame_log = csv.DictWriter(frame_file, fieldnames=fields)
         frame_log.writeheader()
     signal.signal(signal.SIGTERM, stop)
@@ -335,13 +345,19 @@ def main():
     live_frames = 0  # stats.frames at the last live message: fps right now = frames since then / seconds since then
     send_frames = mqtt is not None and args.frames == "on"
     watch = PictureWatch() if source.isdigit() else None  # webcam unplugged -> stop, systemd restarts + finds it
+    confirmed = set()  # track ids that scored >= --count-conf at least once
     try:
         for r in results:
             # only tracked boxes are people: when ByteTrack has no track yet, Ultralytics returns the raw boxes
             # (score >= 0.1, not confirmed) without ids -> they are not counted
             tracked = r.boxes is not None and r.boxes.id is not None
-            if tracked:  # people = boxes scored >= --count-conf (weaker ones keep the tracks alive, nothing more)
-                r = r[r.boxes.conf >= args.count_conf]
+            if tracked:  # people = boxes scored >= --count-conf, or >= HOLD_CONF once their track was confirmed
+                all_ids = r.boxes.id.int().tolist()
+                confirmed.update(i for i, c in zip(all_ids, r.boxes.conf.tolist()) if c >= args.count_conf)
+                held = r.boxes.conf.new_tensor([i in confirmed for i in all_ids]).bool()
+                r = r[(r.boxes.conf >= args.count_conf) | (held & (r.boxes.conf >= HOLD_CONF))]
+                if len(confirmed) > 1000:  # 24/7: keep only the tracks of this frame
+                    confirmed &= set(all_ids)
             ids = r.boxes.id.int().tolist() if tracked else []
             conf = r.boxes.conf.tolist() if tracked else []
             xyxy = r.boxes.xyxy.cpu().numpy() if tracked else np.zeros((0, 4))

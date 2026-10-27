@@ -8,6 +8,9 @@ anchor "bottom" = the feet (bottom-centre of the box: camera looking at people f
 angle); "center" = the middle of the box (camera looking straight down).
 band = a strip of +-2% of the frame height around the line: a person must leave it on the other side to be counted,
 so someone standing on the line and swaying is not counted again and again.
+IN also catches people the line missed (the tracker lost them at the door, or they were inside before the line was
+set): when more people stay inside the zone on the IN side for DWELL_SECONDS than IN - OUT today, the difference is
+added to IN. It compares numbers, not track ids, so a sitting person who gets a new id is not counted again.
 
 The line and zone are set on the dashboard (button "ตั้งค่าการนับ" -> Supabase camera_settings, read every
 SETTINGS_SECONDS by SettingsSync; a copy is kept in zones.json). Nothing set = the whole picture is the room and
@@ -41,7 +44,7 @@ import urllib.request
 import cv2
 import numpy as np
 
-from common import ROOT, cpu_temp, host
+from common import MODEL_NAMES, ROOT, SIZES, cpu_temp, host, ncnn_model
 
 ZONES_FILE = ROOT / "zones.json"
 DATA = ROOT / "data"
@@ -49,6 +52,8 @@ FIELDS = ["time", "seconds", "camera", "in", "out", "in_zone_avg", "in_zone_max"
           "in_today", "out_today", "visitors_today", "fps", "cpu_temp_c", "model"]
 LINE_BGR, ZONE_BGR, IN_BGR = (0, 215, 255), (255, 200, 0), (80, 200, 80)
 COUNT_CONF = 0.35  # boxes below this score are not counted as people (false boxes on chairs scored 0.22-0.28)
+HOLD_CONF = 0.2  # a track that once scored >= COUNT_CONF stays a person down to this score: two people bunched at
+#                   the door drop to ~0.2-0.3 and must not vanish while they cross the line
 FORGET_FRAMES = 300  # a track not seen for this many frames is forgotten (ByteTrack drops it after 30 anyway)
 VISITOR_SECONDS = 1.0  # time inside the zone before a person counts as a visitor: filters false boxes and the
 #                        short-lived ids of the tracker ("flicker"), same rule as unique_people_stable in 3_camera.py
@@ -56,6 +61,8 @@ MQTT_TOPIC, STATUS_TOPIC, LIVE_TOPIC = "pi5/people/count", "pi5/status/people", 
 LIVE_SECONDS = 1.0  # how often the counts right now go to LIVE_TOPIC
 LIVE_WINDOW = 2.0  # "people in the zone now" = median of the frames of the last N seconds: one missed or false box
 #                     does not make the number jump, a real change shows after ~1 s
+DWELL_SECONDS = 5.0  # people seen on the IN side in >= 80% of the frames of the last N seconds but not in IN - OUT
+#                      -> counted IN (more = slower, fewer false boxes counted)
 FRAME_TOPIC = "pi5/people/frame"
 # the picture for the dashboard: 5 per second, 480 px wide (~10 KB each: about 50 KB/s, also through Tailscale Funnel)
 FRAME_SECONDS, FRAME_WIDTH, FRAME_QUALITY = 0.2, 480, 60
@@ -130,12 +137,13 @@ class AreaCounter:
     def update(self, ids: list[int], xyxy: np.ndarray, w: int, h: int, t: float) -> dict:
         """t = time of this frame in seconds (video time for a clip, clock for a live camera).
         Returns this frame's {"in": new IN crossings, "out": new OUT crossings, "in_zone": people in the zone now,
+        "in_room": of those, people on the IN side of the line (0 with no line),
         "visitors": people who became visitors of the zone in this frame}."""
         self.frame += 1
         dt = 0.0 if self.last_t is None else min(max(t - self.last_t, 0.0), 0.5)  # a stall must not count as time
         self.last_t = t
         pts = anchor_points(xyxy, self.zones["anchor"]) if len(ids) else np.zeros((0, 2))
-        out = {"in": 0, "out": 0, "in_zone": 0, "visitors": 0}
+        out = {"in": 0, "out": 0, "in_zone": 0, "in_room": 0, "visitors": 0}
         line = to_pixels(self.zones["line"], w, h) if self.zones.get("line") else None
         zone = to_pixels(self.zones["zone"], w, h).reshape(-1, 1, 2) if self.zones.get("zone") else None
         for tid, p in zip(ids, pts):
@@ -156,6 +164,7 @@ class AreaCounter:
             inside = zone is None or cv2.pointPolygonTest(zone, (float(p[0]), float(p[1])), False) >= 0
             if inside:
                 out["in_zone"] += 1
+                out["in_room"] += person["side"] > 0
                 person["zone_s"] += dt
                 if not person["visitor"] and person["zone_s"] >= VISITOR_SECONDS:
                     person["visitor"] = True
@@ -213,6 +222,8 @@ class MinuteLog:
         self.totals = {}
         self.acc = None
         self.recent = deque()  # (time, people in the zone) of the last LIVE_WINDOW seconds of frames
+        self.room = deque()  # (time, people in the zone on the IN side) of the last DWELL_SECONDS of frames
+        self.since = None  # first frame, or the last crossing of the line: the room window starts again from there
         DATA.mkdir(exist_ok=True)
         if clip is not None:
             (DATA / f"test_{clip}.csv").unlink(missing_ok=True)
@@ -228,7 +239,8 @@ class MinuteLog:
         return datetime.now().astimezone()
 
     def add(self, frame_no: int, counts: dict) -> dict | None:
-        """Add one frame; returns the finished minute's row when a new minute starts."""
+        """Add one frame; returns the finished minute's row when a new minute starts.
+        People who stayed on the IN side but are not in IN - OUT are added to counts["in"] (see DWELL_SECONDS)."""
         t = self.now(frame_no)
         bucket = t.replace(second=0, microsecond=0)
         row = self.flush(bucket) if self.acc and bucket != self.bucket else None
@@ -236,7 +248,22 @@ class MinuteLog:
             self.bucket = bucket
             self.acc = {"from": t, "wall": time.time(), "frames": 0, "in": 0, "out": 0, "visitors": 0,
                         "zone_sum": 0, "zone_max": 0}
+        if self.day != self.bucket.date():  # first frame, or a new day: continue from today's file
+            self.day = self.bucket.date()
+            self.totals = self._saved_totals(self.day)
         a = self.acc
+        ts = t.timestamp()
+        if self.since is None or counts["in"] or counts["out"]:  # IN - OUT just changed, the room window has not:
+            self.room.clear()  # someone who walked out would still look inside for a moment -> counted IN again
+            self.since = ts
+        self.room.append((ts, counts["in_room"]))
+        while self.room[0][0] < ts - DWELL_SECONDS:
+            self.room.popleft()
+        if self.has_line and ts - self.since >= DWELL_SECONDS:
+            steady = sorted(n for _, n in self.room)[len(self.room) // 5]  # seen in >= 80% of the frames
+            net = self.totals["in"] + a["in"] - self.totals["out"] - a["out"]
+            if steady > max(net, 0):  # only people seen staying inside add to IN (someone who was inside before
+                counts["in"] += steady - net  # counting started and walked out, net < 0, adds nothing by itself)
         a["frames"] += 1
         a["in"] += counts["in"]
         a["out"] += counts["out"]
@@ -251,9 +278,6 @@ class MinuteLog:
     def live(self, frame_no: int) -> dict:
         """The counts right now (call after add): people in the zone now (median of the last LIVE_WINDOW seconds),
         today's totals including the minute that is not finished yet. Same names as the minute rows."""
-        if self.day != self.bucket.date():  # before the first row of the day: continue from today's file
-            self.day = self.bucket.date()
-            self.totals = self._saved_totals(self.day)
         a, line = self.acc, self.has_line
         in_zone = sorted(n for _, n in self.recent)[len(self.recent) // 2]
         return {"time": self.now(frame_no).isoformat(timespec="seconds"), "camera": self.camera, "in_zone": in_zone,
@@ -285,10 +309,7 @@ class MinuteLog:
 
     def flush(self, end: datetime) -> dict:
         a, self.acc = self.acc, None
-        if self.day != self.bucket.date():  # first row, or a new day
-            self.day = self.bucket.date()
-            self.totals = self._saved_totals(self.day)
-        for k in self.totals:
+        for k in self.totals:  # self.day / self.totals were set by add() for this minute's day
             self.totals[k] += a[k]
         seconds = min(60.0, (end - a["from"]).total_seconds())
         wall = time.time() - a["wall"]
@@ -423,15 +444,19 @@ def get_settings(url: str, key: str, camera: str, timeout: float = 15) -> dict |
 
 
 def settings_zones(new: dict) -> dict:
-    """Settings saved on the dashboard -> {"line", "zone", "anchor"}, checked like make_zones (a bad part -> None)."""
+    """Settings saved on the dashboard -> {"line", "zone", "anchor", "model", "imgsz"}, checked like make_zones
+    (a bad part -> None). model / imgsz only when that NCNN model is on this board, else None (keep the current one)."""
     def points(value, least):
         ok = isinstance(value, list) and len(value) >= least and all(
             isinstance(p, list) and len(p) == 2 and all(isinstance(c, (int, float)) and 0 <= c <= 1 for c in p)
             for p in value)
         return [[float(x), float(y)] for x, y in value] if ok else None
     line = points(new.get("line"), 2)
+    model, imgsz = new.get("model"), new.get("imgsz")
+    usable = model in MODEL_NAMES and imgsz in SIZES and ncnn_model(model, imgsz).exists()
     return {"line": line if line and len(line) == 2 else None, "zone": points(new.get("zone"), 3),
-            "anchor": new.get("anchor") if new.get("anchor") in ("bottom", "center") else None}
+            "anchor": new.get("anchor") if new.get("anchor") in ("bottom", "center") else None,
+            "model": model if usable else None, "imgsz": imgsz if usable else None}
 
 
 class SettingsSync:

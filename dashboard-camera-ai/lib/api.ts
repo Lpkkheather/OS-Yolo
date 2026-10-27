@@ -1,4 +1,5 @@
 import { StatusResponse, MinuteRow, TodayData } from "@/lib/hooks/useSseToday";
+import type { ModelName, ModelSize } from "@/lib/models";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
 
@@ -137,6 +138,10 @@ export interface CountSettings {
   zone: number[][] | null;
   /** จุดของคนที่ใช้นับ: bottom = เท้า, center = กลางตัว */
   anchor: "bottom" | "center";
+  /** โมเดลที่ตัวนับใช้ (NCNN บนบอร์ด) · null = ตามที่ติดตั้ง service ไว้ */
+  model?: ModelName | null;
+  /** ขนาดภาพที่ส่งเข้าโมเดล: 320 เร็ว · 640 เห็นคนไกล/เล็กชัดกว่า แต่ช้ากว่า */
+  imgsz?: ModelSize | null;
 }
 
 export const fetchCountSettings = () =>

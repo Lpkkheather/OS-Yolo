@@ -6,6 +6,7 @@
 // ============================================================
 import type { MinuteRow, TodayData } from "@/lib/hooks/useSseToday";
 import type { CompareResponse, CompareStat, CountSettings, DayStats, DaySummary, EventItem } from "@/lib/api";
+import { MODEL_NAMES, MODEL_SIZES, type ModelName, type ModelSize } from "@/lib/models";
 
 const SUPABASE_URL = (process.env.SUPABASE_URL ?? "").replace(/\/+$/, "");
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY ?? "";
@@ -137,10 +138,15 @@ function points(value: unknown, least: number): number[][] | null {
 export function cleanZones(input: unknown): CountSettings {
   const z = (input ?? {}) as Record<string, unknown>;
   const line = points(z.line, 2);
+  // โมเดลรับเฉพาะชื่อ/ขนาดในรายการ (ค่านี้ไปถึงบอร์ด) · ส่วนไหนผิด = null ทั้งคู่
+  const model = MODEL_NAMES.includes(z.model as ModelName) ? (z.model as ModelName) : null;
+  const imgsz = MODEL_SIZES.includes(z.imgsz as ModelSize) ? (z.imgsz as ModelSize) : null;
   return {
     line: line && line.length === 2 ? line : null,
     zone: points(z.zone, 3),
     anchor: z.anchor === "center" ? "center" : "bottom",
+    model: model && imgsz ? model : null,
+    imgsz: model && imgsz ? imgsz : null,
   };
 }
 

@@ -10,6 +10,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeftRight,
   Check,
+  Cpu,
   Eraser,
   Footprints,
   Hexagon,
@@ -26,6 +27,7 @@ import {
   saveCountSettings,
   type CountSettings,
 } from "@/lib/api";
+import { MODEL_NAMES, MODEL_SIZES, type ModelName, type ModelSize } from "@/lib/models";
 import type { Detection } from "@/lib/hooks/useSseToday";
 import type { Frame } from "@/lib/hooks/useSocketSync";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,10 @@ import { cn } from "../utils";
 
 type Pt = number[];
 type Tool = "line" | "zone";
+
+/** ตัวเลือกโมเดล "<ชื่อ>_<ขนาด>" — รูปแบบเดียวกับชื่อโมเดลที่ Pi ส่งมาในค่าสด (detection.model) */
+const MODEL_OPTIONS = MODEL_NAMES.flatMap((n) => MODEL_SIZES.map((size) => `${n}_${size}`));
+const DEFAULT_MODEL = "yolo26n_trained_320"; // ที่ติดตั้ง service ไว้
 
 interface Props {
   frame: Frame | null;
@@ -139,6 +145,9 @@ export function ZoneEditor({ frame, detection, onClose }: Props) {
   const [line, setLine] = useState<Pt[]>([]);
   const [zone, setZone] = useState<Pt[]>([]);
   const [anchor, setAnchor] = useState<CountSettings["anchor"]>("bottom");
+  const [model, setModel] = useState(() =>
+    MODEL_OPTIONS.includes(detection?.model ?? "") ? detection!.model! : DEFAULT_MODEL,
+  );
   const [state, setState] = useState<
     "loading" | "ready" | "saving" | "saved" | "error"
   >("loading");
@@ -156,6 +165,7 @@ export function ZoneEditor({ frame, detection, onClose }: Props) {
         setLine(zones?.line ?? []);
         setZone(zones?.zone ?? []);
         setAnchor(zones?.anchor ?? "bottom");
+        if (zones?.model && zones.imgsz) setModel(`${zones.model}_${zones.imgsz}`);
         setState("ready");
       })
       .catch(() => mounted && setState("error"));
@@ -223,7 +233,8 @@ export function ZoneEditor({ frame, detection, onClose }: Props) {
     loading: "กำลังโหลดค่าที่ตั้งไว้…",
     ready: dirty ? "มีการแก้ไขที่ยังไม่ได้บันทึก" : "",
     saving: "กำลังบันทึก…",
-    saved: "บันทึกแล้ว · ตัวนับบน Raspberry Pi จะใช้ค่านี้ภายใน 30 วินาที",
+    saved:
+      "บันทึกแล้ว · ตัวนับบน Raspberry Pi จะใช้ค่านี้ภายใน 30 วินาที (เปลี่ยนโมเดล = ตัวนับเริ่มใหม่ ~1 นาที)",
     error:
       "บันทึกหรือโหลดไม่ได้ (ต้องตั้ง SUPABASE_URL / SUPABASE_SECRET_KEY บน Vercel)",
   }[state];
@@ -420,13 +431,19 @@ export function ZoneEditor({ frame, detection, onClose }: Props) {
               />
             )}
           </svg>
-          {/* จุดที่คลิก + หัวลูกศร "เข้า" เป็น HTML (วงกลมใน SVG ที่ยืดตามภาพจะเบี้ยว) */}
-          {[...line, ...zone].map(([x, y], i) => (
+          {/* จุดที่คลิก (เลขตามลำดับที่คลิก: เหลือง = เส้น, ฟ้า = มุมโซน) + หัวลูกศร "เข้า" เป็น HTML
+              (วงกลมใน SVG ที่ยืดตามภาพจะเบี้ยว) */}
+          {[
+            ...line.map((p, i) => ({ p, n: i + 1, color: "bg-yellow-400" })),
+            ...zone.map((p, i) => ({ p, n: i + 1, color: "bg-cyan-400" })),
+          ].map(({ p: [x, y], n, color }, i) => (
             <span
               key={i}
-              className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-black bg-white"
+              className={`pointer-events-none absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-black text-[11px] font-bold text-black ${color}`}
               style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
-            />
+            >
+              {n}
+            </span>
           ))}
           {arrow && (
             <span
@@ -463,6 +480,34 @@ export function ZoneEditor({ frame, detection, onClose }: Props) {
               note="กล้องต่ำ / มีโต๊ะหรือเก้าอี้บังขา"
             />
           </div>
+        </div>
+
+        {/* โมเดลที่ตัวนับใช้: เปลี่ยนแล้วดู FPS จริงของบอร์ดได้ทันทีด้านล่าง */}
+        <div className="space-y-2">
+          <label htmlFor="count-model" className="flex items-center gap-2 text-sm font-medium text-gray-200">
+            <Cpu size={16} className="text-gray-400" />
+            โมเดล
+          </label>
+          <select
+            id="count-model"
+            value={model}
+            onChange={(e) => {
+              setModel(e.target.value);
+              edit();
+            }}
+            className="w-full rounded-lg border border-[#333] bg-[#202020] px-3 py-2.5 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+          >
+            {MODEL_OPTIONS.map((m) => (
+              <option key={m} value={m}>
+                {m.replace(/_(\d+)$/, " · $1 px")}
+                {m.endsWith("_320") ? "  (เร็ว)" : "  (เห็นคนไกล/เล็กชัดกว่า แต่ช้ากว่า ~4 เท่า)"}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-400">
+            ตอนนี้บอร์ดใช้ {detection?.model ?? "—"} · {detection?.fps ?? "—"} FPS · FPS ต่ำกว่า 8
+            คนเดินเร็วจะหลุดการติดตามง่าย (ระบบแจ้งเหตุการณ์ FPS ต่ำ)
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#2a2a2a] pt-4">
@@ -503,6 +548,8 @@ export function ZoneEditor({ frame, detection, onClose }: Props) {
                   line: line.length === 2 ? line : null,
                   zone: zone.length >= 3 ? zone : null,
                   anchor,
+                  model: model.slice(0, model.lastIndexOf("_")) as ModelName,
+                  imgsz: Number(model.slice(model.lastIndexOf("_") + 1)) as ModelSize,
                 })
               }
               className="bg-blue-600 p-5 text-white hover:bg-blue-500 "

@@ -11,8 +11,9 @@
 // event "frame": Buffer JPEG — ภาพที่โมเดลวาดกรอบแล้ว (~5 ภาพ/วินาที, MQTT pi5/people/frame) + ภาพล่าสุดตอน client ต่อเข้ามา
 //   ส่งแบบ volatile: client ที่เน็ตช้ารับไม่ทัน = ทิ้งภาพนั้น ไม่เข้าคิว (ไม่งั้นภาพเก่าสะสม หน่วงขึ้นเรื่อยๆ)
 //
-// "คนในห้องตอนนี้" (currentPeople) = คนที่กล้องเห็นในโซนตอนนี้ (Pi ส่ง median ของ 2 วินาทีล่าสุด)
-// ไม่ใช่ เข้า − ออก: ค่านั้นเปลี่ยนเฉพาะตอนมีคนข้ามเส้น และถ้านับพลาดครั้งเดียวจะผิดไปทั้งวัน
+// "คนในห้องตอนนี้" (currentPeople) = ค่าที่มากกว่าระหว่าง เข้า − ออก ของวันนี้ (มีเส้น) กับ คนที่กล้องเห็นในโซนตอนนี้
+//   (median 2 วินาทีล่าสุด): คนที่อยู่ในห้องก่อนเริ่มนับ / ไม่ได้เดินผ่านเส้น ก็ยังนับ · ไม่ได้วาดโซน = ทั้งภาพ
+//   (คนฝั่ง "ออก" ที่อยู่ในภาพก็นับด้วย → วาดโซนห้องให้ตรง) · เข้า − ออก เริ่ม 0 ใหม่ทุกวัน
 // ตัวนับแจ้ง offline หรือไม่ส่งค่าสดเกิน 10 วินาที → currentPeople = null (dashboard แสดง "—" แทนตัวเลขเก่า)
 // ============================================================
 import { Server } from "socket.io";
@@ -39,6 +40,12 @@ function detectionOf(live) {
   };
 }
 
+/** คนในห้องตอนนี้ = max(เข้า − ออก, คนที่เห็นในโซน) · ไม่มีเส้น (in_today = null) = คนที่เห็นในโซน */
+function currentOf(live) {
+  const net = live.in_today != null ? live.in_today - (live.out_today ?? 0) : 0;
+  return live.in_zone == null ? Math.max(0, net) : Math.max(net, live.in_zone);
+}
+
 /** ใส่ค่าสดลงในข้อมูลวันนี้ */
 function applyLive(today, live) {
   return {
@@ -46,8 +53,8 @@ function applyLive(today, live) {
     inToday: live.in_today ?? today.inToday,
     outToday: live.out_today ?? today.outToday,
     visitorsToday: live.visitors_today ?? today.visitorsToday,
-    currentPeople: live.in_zone,
-    maxInRoom: Math.max(today.maxInRoom, live.in_zone ?? 0),
+    currentPeople: currentOf(live),
+    maxInRoom: Math.max(today.maxInRoom, currentOf(live) ?? 0),
     liveTime: live.time,
     detection: detectionOf(live),
   };
@@ -103,7 +110,8 @@ export function startSocket(httpServer, origin, seconds) {
     if (io.engine.clientsCount > 0) send(io);
   }, seconds * 1000);
 
-  onLive((live) => io.emit("live", { time: live.time, in_zone: live.in_zone, detection: detectionOf(live) }));
+  // ชื่อ in_zone คงไว้ให้ dashboard ที่ deploy แล้วใช้ได้เลย แต่ค่าคือ "คนในห้องตอนนี้" (currentOf)
+  onLive((live) => io.emit("live", { time: live.time, in_zone: currentOf(live), detection: detectionOf(live) }));
   onFrame((jpeg) => io.volatile.emit("frame", jpeg));
 
   return io;

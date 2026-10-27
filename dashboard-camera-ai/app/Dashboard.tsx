@@ -128,7 +128,7 @@ export function Dashboard() {
   );
 
   return (
-    <div className="space-y-4 max-w-7xl mx-auto">
+    <div className="space-y-4 max-w-screen-2xl mx-auto">
       <div className="flex flex-wrap items-stretch gap-3">
         <div className="flex-1 min-w-[16rem]">
           <StatusBar />
@@ -162,8 +162,8 @@ export function Dashboard() {
         </>
       ) : (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-3">
               <DetectionCard frame={frame} detection={today?.detection} lastRow={lastRow} />
             </div>
             <Suspense>
